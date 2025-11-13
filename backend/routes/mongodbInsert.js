@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const { MongoClient } = require('mongodb');
@@ -190,12 +190,21 @@ router.post('/insert', async (req, res) => {
     
     global.emitTraffic('MongoDBInsert', 'processing', 'Inserindo documento no MongoDB');
     global.emitLog('info', `POST /api/mongodb/insert - Inserindo documento em ${database}.${collection}`);
+    global.emitLog('info', `POST /api/mongodb/insert - Documento sanitizado: ${JSON.stringify(sanitizedDocument).substring(0, 200)}...`);
     
-    // Inserir documento
-    const result = await coll.insertOne(sanitizedDocument);
+    // Inserir documento com write concern explícito para garantir escrita confirmada
+    const result = await coll.insertOne(sanitizedDocument, {
+      writeConcern: { w: 'majority', wtimeout: 5000 }
+    });
+    
+    // Verificar se a inserção foi bem-sucedida
+    if (!result.insertedId) {
+      throw new Error('Inserção falhou: insertedId não retornado');
+    }
     
     global.emitTraffic('MongoDBInsert', 'completed', `Documento inserido com sucesso - ID: ${result.insertedId}`);
     global.emitLog('success', `POST /api/mongodb/insert - Documento inserido com sucesso em ${database}.${collection} - ID: ${result.insertedId}`);
+    global.emitLog('info', `POST /api/mongodb/insert - Resultado completo: ${JSON.stringify(result)}`);
     
     // INBOUND: Resposta para o cliente
     const response = {
