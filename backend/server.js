@@ -1,4 +1,4 @@
-// VERSION: v4.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.8.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -34,6 +34,7 @@ const academyCursosConteudoRoutes = require('./routes/academyCursosConteudo');
 const mongodbInsertRoutes = require('./routes/mongodbInsert');
 const mongodbCertificadosRoutes = require('./routes/mongodbCertificados');
 const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
+const audioAnaliseRoutes = require('./routes/audioAnalise');
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -66,6 +67,18 @@ const broadcastEvent = (data, eventType = 'message') => {
       sendSSEEvent(res, data, eventType, id);
     }
   });
+};
+
+// Broadcast específico para eventos de áudio
+const broadcastAudioEvent = (audioId, status, data = {}) => {
+  const eventData = {
+    type: 'audio-analysis',
+    audioId: audioId,
+    status: status, // 'processando', 'concluido', 'erro'
+    timestamp: new Date().toISOString(),
+    ...data
+  };
+  broadcastEvent(eventData, 'audio-analysis');
 };
 
 // Middleware de segurança
@@ -133,6 +146,7 @@ app.use('/api/academy/cursos-conteudo', academyCursosConteudoRoutes);
 app.use('/api/mongodb', mongodbInsertRoutes);
 app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
+app.use('/api/audio-analise', audioAnaliseRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {
@@ -256,6 +270,11 @@ global.emitJsonInput = (data) => {
     data, 
     timestamp: new Date().toISOString() 
   }, 'current-json-input');
+};
+
+// Função para broadcast de eventos de áudio via SSE
+global.broadcastAudioEvent = (audioId, status, data = {}) => {
+  broadcastAudioEvent(audioId, status, data);
 };
 
 // Inicializar servidor

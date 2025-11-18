@@ -4,6 +4,12 @@
 ## 📋 **Descrição**
 Backend API para o Console de Conteúdo VeloHub. Esta é uma API RESTful construída com Express.js e MongoDB, responsável por gerenciar artigos, velonews, perguntas do bot e métricas IGP.
 
+## 📦 **Repositório GitHub**
+- **Repositório:** [https://github.com/admVeloHub/Backend-GCP](https://github.com/admVeloHub/Backend-GCP)
+- **Worker Separado:** [https://github.com/admVeloHub/gcp-worker-qualidade](https://github.com/admVeloHub/gcp-worker-qualidade)
+
+**IMPORTANTE:** Este repositório contém apenas o Backend API. O Worker de processamento de áudio está em repositório separado.
+
 ## 🛠️ **Tecnologias**
 - **Node.js** (>=16.0.0)
 - **Express.js** - Framework web

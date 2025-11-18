@@ -1,5 +1,5 @@
 listagem de schema de coleções do mongoDB
-  <!-- VERSION: v2.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team -->
+  <!-- VERSION: v2.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team -->
      
     🗄️ Database Principal: console_conteudo
   
@@ -251,9 +251,9 @@ mes: String,                    // Mês da avaliação
 ano: Number,                    // Ano da avaliação
 saudacaoAdequada: Boolean,      // Critério de avaliação
 escutaAtiva: Boolean,           // Critério de avaliação
-clarezaObjetividade: Boolean,   // Critério de avaliação (NOVO)
+clarezaObjetividade: Boolean,   // Critério de avaliação
 resolucaoQuestao: Boolean,      // Critério de avaliação
-dominioAssunto: Boolean,        // Critério de avaliação (NOVO)
+dominioAssunto: Boolean,        // Critério de avaliação
 empatiaCordialidade: Boolean,   // Critério de avaliação
 direcionouPesquisa: Boolean,    // Critério de avaliação
 procedimentoIncorreto: Boolean, // Critério de avaliação
@@ -305,12 +305,69 @@ updatedAt: Date,                // Data de atualização
     direcionouPesquisa: Boolean,
     procedimentoIncorreto: Boolean,
     encerramentoBrusco: Boolean
+    pontuacaoTotal: Number,         // Pontuação total
+
   },
   confianca: Number,              // Nível de confiança (0-100)
+  observacoes: String,            // Observações da avaliação
   palavrasCriticas: [String],     // Palavras-chave críticas mencionadas
   calculoDetalhado: [String],     // Explicação do cálculo da pontuação
   createdAt: Date,                // Data de criação
   updatedAt: Date                 // Data de atualização (padronizado)
+  }
+  
+  //schema console_analises.audio_analise_status
+  {
+  _id: ObjectId,                  // ID gerado pelo MongoDB
+  nomeArquivo: String,            // Nome do arquivo de áudio
+  sent: Boolean,                  // true quando transmissão para GCS ocorreu
+  treated: Boolean,               // true quando relatório GPT for entregue
+  createdAt: Date,                // Data de criação
+  updatedAt: Date                 // Data de atualização
+  }
+  
+  //schema console_analises.audio_analise_results
+  {
+  _id: ObjectId,                  // ID gerado pelo MongoDB
+  audioStatusId: ObjectId,        // Referência ao audio_analise_status
+  nomeArquivo: String,            // Nome do arquivo de áudio
+  gcsUri: String,                 // URI do arquivo no GCS (gs://bucket/file)
+  transcription: String,          // Transcrição completa do áudio
+  timestamps: [{                  // Array de timestamps das palavras
+    word: String,                 // Palavra
+    startTime: Number,            // Tempo de início em segundos
+    endTime: Number               // Tempo de fim em segundos
+  }],
+  emotion: {                      // Análise de emoção
+    tom: String,                  // positivo|neutro|negativo
+    empatia: Number,             // Nível de empatia (0-100)
+    profissionalismo: Number      // Nível de profissionalismo (0-100)
+  },
+  nuance: {                       // Análise de nuance
+    clareza: Number,             // Nível de clareza (0-100)
+    tensao: Number               // Nível de tensão (0-100)
+  },
+  qualityAnalysis: {              // Análise de qualidade
+    criterios: {                  // Critérios avaliados
+      saudacaoAdequada: Boolean,
+      escutaAtiva: Boolean,
+      clarezaObjetividade: Boolean,
+      resolucaoQuestao: Boolean,
+      dominioAssunto: Boolean,
+      empatiaCordialidade: Boolean,
+      direcionouPesquisa: Boolean,
+      procedimentoIncorreto: Boolean,
+      encerramentoBrusco: Boolean
+    },
+    pontuacao: Number,           // Pontuação total (0-100)
+    confianca: Number,           // Nível de confiança (0-100)
+    palavrasCriticas: [String],  // Palavras-chave críticas
+    calculoDetalhado: [String],  // Explicação do cálculo
+    analysis: String             // Análise completa em texto
+  },
+  processingTime: Number,         // Tempo de processamento em segundos
+  createdAt: Date,                // Data de criação
+  updatedAt: Date                 // Data de atualização
   }
   
   //schema console_analises.qualidade_funcoes

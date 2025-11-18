@@ -34,6 +34,8 @@ Quero tudo analisado e pensado, e decisões acertadas com 100% de certeza da imp
 3. **LAYOUT_GUIDELINES.md** - Guia completo de layout, cores, tipografia e padrões visuais
 4. **listagem de schema de coleções do mongoD.rb** - Schemas das coleções MongoDB
 5. **README.md** - Documentação principal do projeto
+6. **ARQUITETURA_REPOSITORIOS.md** - Arquitetura de repositórios GitHub e regras de commit/push
+7. **Diretrizes especificas do projeto.ini** - Diretrizes específicas do projeto e repositórios
 
 ### **Arquivos de Padrão Visual:**
 - **src/styles/theme.js** - Tema Material-UI

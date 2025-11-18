@@ -1,0 +1,54 @@
+# VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+# Arquivos e diretórios a serem ignorados no build Docker
+
+# Dependências
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentação e arquivos de desenvolvimento
+README.md
+*.md
+!DEPLOY_LOG.md
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivos de teste
+test_*.js
+*.test.js
+*.spec.js
+
+# Arquivos temporários
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Arquivos de configuração local
+vercel.json
+.vercel/
+
+# Arquivos de backup
+*.bak
+*.backup
+
