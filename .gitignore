@@ -81,3 +81,6 @@ jspm_packages/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Worker separado (repositório próprio)
+worker-qualidade/
