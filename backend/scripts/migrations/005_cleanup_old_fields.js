@@ -4,7 +4,11 @@
 const { MongoClient } = require('mongodb');
 
 // Configuração de conexão
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://REDACTED_ATLAS_URI';
+// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+if (!process.env.MONGODB_URI) {
+  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+}
+const MONGODB_URI = process.env.MONGODB_URI;
 
 async function cleanupOldFields() {
   const client = new MongoClient(MONGODB_URI);
