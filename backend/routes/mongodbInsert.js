@@ -1,10 +1,13 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const { MongoClient } = require('mongodb');
 
-// Connection string do MongoDB (usar variável de ambiente se disponível)
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://lucasgravina:nKQu8bSN6iZl8FPo@velohubcentral.od7vwts.mongodb.net/?retryWrites=true&w=majority&appName=VelohubCentral';
+// Connection string do MongoDB - deve ser configurada via variável de ambiente (secrets)
+if (!process.env.MONGODB_URI) {
+  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+}
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Database fixo para certificados e reprovações
 const ACADEMY_REGISTROS_DB = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';

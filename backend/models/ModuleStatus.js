@@ -1,10 +1,14 @@
-// VERSION: v2.4.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v2.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexões específicas para os databases
 const CONFIG_DB_NAME = process.env.CONSOLE_CONFIG_DB || 'console_config';
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://lucasgravina:nKQu8bSN6iZl8FPo@velohubcentral.od7vwts.mongodb.net/?retryWrites=true&w=majority&appName=VelohubCentral';
+// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+if (!process.env.MONGODB_URI) {
+  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+}
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Criar conexão específica para o database de configuração (module_status)
 const configConnection = mongoose.createConnection(MONGODB_URI, {

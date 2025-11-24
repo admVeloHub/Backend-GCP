@@ -1,4 +1,4 @@
-// VERSION: v4.8.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -285,7 +285,11 @@ const startServer = async () => {
     await initializeCollections();
     
     // Configurar Mongoose
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://lucasgravina:nKQu8bSN6iZl8FPo@velohubcentral.od7vwts.mongodb.net/?retryWrites=true&w=majority&appName=VelohubCentral';
+    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+    if (!process.env.MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    const MONGODB_URI = process.env.MONGODB_URI;
     await mongoose.connect(MONGODB_URI, {
       dbName: 'console_conteudo'
     });
