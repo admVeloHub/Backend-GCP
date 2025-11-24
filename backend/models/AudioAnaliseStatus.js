@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para console_analises
@@ -17,6 +17,11 @@ const audioAnaliseStatusSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  avaliacaoId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'QualidadeAvaliacao',
+    required: false
+  },
   sent: {
     type: Boolean,
     required: true,
@@ -34,6 +39,7 @@ const audioAnaliseStatusSchema = new mongoose.Schema({
 
 // Índices para otimização de consultas
 audioAnaliseStatusSchema.index({ nomeArquivo: 1 });
+audioAnaliseStatusSchema.index({ avaliacaoId: 1 });
 audioAnaliseStatusSchema.index({ sent: 1 });
 audioAnaliseStatusSchema.index({ treated: 1 });
 audioAnaliseStatusSchema.index({ createdAt: -1 });
