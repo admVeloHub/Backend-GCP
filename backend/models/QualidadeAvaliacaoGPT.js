@@ -1,4 +1,4 @@
-// VERSION: v1.7.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.8.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -150,15 +150,62 @@ let QualidadeAvaliacaoGPTModel = null;
 
 const getModel = () => {
   if (!QualidadeAvaliacaoGPTModel) {
-    const connection = getAnalisesConnection();
-    QualidadeAvaliacaoGPTModel = connection.model('QualidadeAvaliacaoGPT', qualidadeAvaliacaoGPTSchema, 'qualidade_avaliacoes_gpt');
+    try {
+      const connection = getAnalisesConnection();
+      
+      // Validar que conexão existe e está válida
+      if (!connection) {
+        throw new Error('Conexão MongoDB não foi criada');
+      }
+      
+      QualidadeAvaliacaoGPTModel = connection.model('QualidadeAvaliacaoGPT', qualidadeAvaliacaoGPTSchema, 'qualidade_avaliacoes_gpt');
+    } catch (error) {
+      console.error('❌ Erro ao inicializar modelo QualidadeAvaliacaoGPT:', error);
+      throw error;
+    }
   }
   return QualidadeAvaliacaoGPTModel;
 };
 
-module.exports = new Proxy({}, {
+// Criar função construtora que delega para o modelo real
+const QualidadeAvaliacaoGPTConstructor = function(...args) {
+  const model = getModel();
+  if (!model) {
+    throw new Error('Modelo QualidadeAvaliacaoGPT não foi inicializado');
+  }
+  return new model(...args);
+};
+
+// Copiar propriedades estáticas do modelo para o construtor
+Object.setPrototypeOf(QualidadeAvaliacaoGPTConstructor.prototype, mongoose.Model.prototype);
+
+module.exports = new Proxy(QualidadeAvaliacaoGPTConstructor, {
   get: (target, prop) => {
+    // Propriedades especiais do Proxy
+    if (prop === Symbol.toStringTag) {
+      return 'QualidadeAvaliacaoGPT';
+    }
+    
     const model = getModel();
-    return model[prop];
+    if (!model) {
+      throw new Error('Modelo QualidadeAvaliacaoGPT não foi inicializado');
+    }
+    
+    // Se a propriedade existe no modelo, retornar do modelo
+    if (prop in model || typeof model[prop] !== 'undefined') {
+      const value = model[prop];
+      // Bind métodos para manter contexto correto
+      if (typeof value === 'function' && prop !== 'constructor') {
+        return value.bind(model);
+      }
+      return value;
+    }
+    
+    // Caso contrário, retornar do target (função construtora)
+    return target[prop];
+  },
+  construct: (target, args) => {
+    const model = getModel();
+    return new model(...args);
   }
 });

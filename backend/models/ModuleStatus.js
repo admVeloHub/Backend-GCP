@@ -1,4 +1,4 @@
-// VERSION: v2.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.8.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -127,32 +127,109 @@ let FAQModel = null;
 
 const getModuleStatusModel = () => {
   if (!ModuleStatusModel) {
-    const connection = getConfigConnection();
-    ModuleStatusModel = connection.model('ModuleStatus', moduleStatusSchema, 'module_status');
+    try {
+      const connection = getConfigConnection();
+      
+      // Validar que conexão existe e está válida
+      if (!connection) {
+        throw new Error('Conexão MongoDB não foi criada');
+      }
+      
+      ModuleStatusModel = connection.model('ModuleStatus', moduleStatusSchema, 'module_status');
+    } catch (error) {
+      console.error('❌ Erro ao inicializar modelo ModuleStatus:', error);
+      throw error;
+    }
   }
   return ModuleStatusModel;
 };
 
 const getFAQModel = () => {
   if (!FAQModel) {
-    const connection = getAnalisesConnection();
-    FAQModel = connection.model('FAQ', faqSchema, 'faq_bot');
+    try {
+      const connection = getAnalisesConnection();
+      
+      // Validar que conexão existe e está válida
+      if (!connection) {
+        throw new Error('Conexão MongoDB não foi criada');
+      }
+      
+      FAQModel = connection.model('FAQ', faqSchema, 'faq_bot');
+    } catch (error) {
+      console.error('❌ Erro ao inicializar modelo FAQ:', error);
+      throw error;
+    }
   }
   return FAQModel;
 };
 
+// Criar funções construtoras que delegam para os modelos reais
+const ModuleStatusConstructor = function(...args) {
+  const model = getModuleStatusModel();
+  if (!model) {
+    throw new Error('Modelo ModuleStatus não foi inicializado');
+  }
+  return new model(...args);
+};
+
+const FAQConstructor = function(...args) {
+  const model = getFAQModel();
+  if (!model) {
+    throw new Error('Modelo FAQ não foi inicializado');
+  }
+  return new model(...args);
+};
+
+// Copiar propriedades estáticas dos modelos para os construtores
+Object.setPrototypeOf(ModuleStatusConstructor.prototype, mongoose.Model.prototype);
+Object.setPrototypeOf(FAQConstructor.prototype, mongoose.Model.prototype);
+
 // Exportar ambos os modelos com Proxy para lazy loading
 module.exports = {
-  ModuleStatus: new Proxy({}, {
+  ModuleStatus: new Proxy(ModuleStatusConstructor, {
     get: (target, prop) => {
+      if (prop === Symbol.toStringTag) {
+        return 'ModuleStatus';
+      }
       const model = getModuleStatusModel();
-      return model[prop];
+      if (!model) {
+        throw new Error('Modelo ModuleStatus não foi inicializado');
+      }
+      if (prop in model || typeof model[prop] !== 'undefined') {
+        const value = model[prop];
+        if (typeof value === 'function' && prop !== 'constructor') {
+          return value.bind(model);
+        }
+        return value;
+      }
+      return target[prop];
+    },
+    construct: (target, args) => {
+      const model = getModuleStatusModel();
+      return new model(...args);
     }
   }),
-  FAQ: new Proxy({}, {
+  FAQ: new Proxy(FAQConstructor, {
     get: (target, prop) => {
+      if (prop === Symbol.toStringTag) {
+        return 'FAQ';
+      }
       const model = getFAQModel();
-      return model[prop];
+      if (!model) {
+        throw new Error('Modelo FAQ não foi inicializado');
+      }
+      if (prop in model || typeof model[prop] !== 'undefined') {
+        const value = model[prop];
+        if (typeof value === 'function' && prop !== 'constructor') {
+          return value.bind(model);
+        }
+        return value;
+      }
+      return target[prop];
+    },
+    construct: (target, args) => {
+      const model = getFAQModel();
+      return new model(...args);
     }
   })
 };

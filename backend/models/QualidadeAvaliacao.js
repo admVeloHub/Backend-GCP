@@ -144,15 +144,62 @@ let QualidadeAvaliacaoModel = null;
 
 const getModel = () => {
   if (!QualidadeAvaliacaoModel) {
-    const connection = getAnalisesConnection();
-    QualidadeAvaliacaoModel = connection.model('QualidadeAvaliacao', qualidadeAvaliacaoSchema, 'qualidade_avaliacoes');
+    try {
+      const connection = getAnalisesConnection();
+      
+      // Validar que conexão existe e está válida
+      if (!connection) {
+        throw new Error('Conexão MongoDB não foi criada');
+      }
+      
+      QualidadeAvaliacaoModel = connection.model('QualidadeAvaliacao', qualidadeAvaliacaoSchema, 'qualidade_avaliacoes');
+    } catch (error) {
+      console.error('❌ Erro ao inicializar modelo QualidadeAvaliacao:', error);
+      throw error;
+    }
   }
   return QualidadeAvaliacaoModel;
 };
 
-module.exports = new Proxy({}, {
+// Criar função construtora que delega para o modelo real
+const QualidadeAvaliacaoConstructor = function(...args) {
+  const model = getModel();
+  if (!model) {
+    throw new Error('Modelo QualidadeAvaliacao não foi inicializado');
+  }
+  return new model(...args);
+};
+
+// Copiar propriedades estáticas do modelo para o construtor
+Object.setPrototypeOf(QualidadeAvaliacaoConstructor.prototype, mongoose.Model.prototype);
+
+module.exports = new Proxy(QualidadeAvaliacaoConstructor, {
   get: (target, prop) => {
+    // Propriedades especiais do Proxy
+    if (prop === Symbol.toStringTag) {
+      return 'QualidadeAvaliacao';
+    }
+    
     const model = getModel();
-    return model[prop];
+    if (!model) {
+      throw new Error('Modelo QualidadeAvaliacao não foi inicializado');
+    }
+    
+    // Se a propriedade existe no modelo, retornar do modelo
+    if (prop in model || typeof model[prop] !== 'undefined') {
+      const value = model[prop];
+      // Bind métodos para manter contexto correto
+      if (typeof value === 'function' && prop !== 'constructor') {
+        return value.bind(model);
+      }
+      return value;
+    }
+    
+    // Caso contrário, retornar do target (função construtora)
+    return target[prop];
+  },
+  construct: (target, args) => {
+    const model = getModel();
+    return new model(...args);
   }
 });
