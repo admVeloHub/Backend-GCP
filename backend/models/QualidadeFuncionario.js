@@ -1,4 +1,4 @@
-// VERSION: v1.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -10,10 +10,34 @@ let analisesConnection = null;
 // Função para obter conexão (lazy loading)
 const getAnalisesConnection = () => {
   if (!analisesConnection) {
-    const MONGODB_URI = getMongoUri();
-    analisesConnection = mongoose.createConnection(MONGODB_URI, {
-      dbName: ANALISES_DB_NAME
-    });
+    try {
+      const MONGODB_URI = getMongoUri();
+      if (!MONGODB_URI) {
+        throw new Error('MONGO_ENV não configurada');
+      }
+      
+      analisesConnection = mongoose.createConnection(MONGODB_URI, {
+        dbName: ANALISES_DB_NAME,
+        serverSelectionTimeoutMS: 5000, // Timeout de 5 segundos
+        socketTimeoutMS: 45000,
+      });
+
+      // Event listeners para debug
+      analisesConnection.on('connected', () => {
+        console.log('✅ Conexão MongoDB (QualidadeFuncionario) estabelecida');
+      });
+
+      analisesConnection.on('error', (error) => {
+        console.error('❌ Erro na conexão MongoDB (QualidadeFuncionario):', error);
+      });
+
+      analisesConnection.on('disconnected', () => {
+        console.warn('⚠️ Conexão MongoDB (QualidadeFuncionario) desconectada');
+      });
+    } catch (error) {
+      console.error('❌ Erro ao criar conexão MongoDB (QualidadeFuncionario):', error);
+      throw error;
+    }
   }
   return analisesConnection;
 };
@@ -133,30 +157,35 @@ let QualidadeFuncionarioModel = null;
 
 const getModel = () => {
   if (!QualidadeFuncionarioModel) {
-    const connection = getAnalisesConnection();
-    QualidadeFuncionarioModel = connection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
+    try {
+      const connection = getAnalisesConnection();
+      QualidadeFuncionarioModel = connection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
 
-// Método estático para obter funcionários ativos (não desligados e não afastados)
-    QualidadeFuncionarioModel.getActiveFuncionarios = async function() {
-  try {
-    const funcionarios = await this.find({
-      desligado: { $ne: true },
-      afastado: { $ne: true }
-    }).select('colaboradorNome').lean();
-    
-    return {
-      success: true,
-      data: funcionarios,
-      count: funcionarios.length
-    };
-  } catch (error) {
-    console.error('Erro ao obter funcionários ativos:', error);
-    return {
-      success: false,
-      error: 'Erro interno do servidor'
-    };
-  }
-};
+      // Método estático para obter funcionários ativos (não desligados e não afastados)
+      QualidadeFuncionarioModel.getActiveFuncionarios = async function() {
+        try {
+          const funcionarios = await this.find({
+            desligado: { $ne: true },
+            afastado: { $ne: true }
+          }).select('colaboradorNome').lean();
+          
+          return {
+            success: true,
+            data: funcionarios,
+            count: funcionarios.length
+          };
+        } catch (error) {
+          console.error('Erro ao obter funcionários ativos:', error);
+          return {
+            success: false,
+            error: 'Erro interno do servidor'
+          };
+        }
+      };
+    } catch (error) {
+      console.error('❌ Erro ao inicializar modelo QualidadeFuncionario:', error);
+      throw error;
+    }
   }
   return QualidadeFuncionarioModel;
 };

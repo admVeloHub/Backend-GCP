@@ -324,9 +324,11 @@ router.get('/funcionarios', async (req, res) => {
     });
   } catch (error) {
     console.error('[QUALIDADE-FUNCIONARIOS] Erro ao buscar funcionários:', error);
+    console.error('[QUALIDADE-FUNCIONARIOS] Stack trace:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Erro interno do servidor ao buscar funcionários'
+      message: 'Erro interno do servidor ao buscar funcionários',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -527,9 +529,11 @@ router.get('/avaliacoes', async (req, res) => {
     });
   } catch (error) {
     console.error('[QUALIDADE-AVALIACOES] Erro ao buscar avaliações:', error);
+    console.error('[QUALIDADE-AVALIACOES] Stack trace:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Erro interno do servidor ao buscar avaliações'
+      message: 'Erro interno do servidor ao buscar avaliações',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

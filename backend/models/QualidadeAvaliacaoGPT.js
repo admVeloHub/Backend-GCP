@@ -1,4 +1,4 @@
-// VERSION: v1.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.7.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -10,10 +10,33 @@ let analisesConnection = null;
 // Função para obter conexão (lazy loading)
 const getAnalisesConnection = () => {
   if (!analisesConnection) {
-    const MONGODB_URI = getMongoUri();
-    analisesConnection = mongoose.createConnection(MONGODB_URI, {
-      dbName: ANALISES_DB_NAME
-    });
+    try {
+      const MONGODB_URI = getMongoUri();
+      if (!MONGODB_URI) {
+        throw new Error('MONGO_ENV não configurada');
+      }
+      
+      analisesConnection = mongoose.createConnection(MONGODB_URI, {
+        dbName: ANALISES_DB_NAME,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      });
+
+      analisesConnection.on('connected', () => {
+        console.log('✅ Conexão MongoDB (QualidadeAvaliacaoGPT) estabelecida');
+      });
+
+      analisesConnection.on('error', (error) => {
+        console.error('❌ Erro na conexão MongoDB (QualidadeAvaliacaoGPT):', error);
+      });
+
+      analisesConnection.on('disconnected', () => {
+        console.warn('⚠️ Conexão MongoDB (QualidadeAvaliacaoGPT) desconectada');
+      });
+    } catch (error) {
+      console.error('❌ Erro ao criar conexão MongoDB (QualidadeAvaliacaoGPT):', error);
+      throw error;
+    }
   }
   return analisesConnection;
 };
