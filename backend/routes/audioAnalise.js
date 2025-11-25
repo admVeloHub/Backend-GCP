@@ -1,4 +1,4 @@
-// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const AudioAnaliseStatus = require('../models/AudioAnaliseStatus');
@@ -349,8 +349,18 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
             }
             
             // Adicionar análise se tiver pontuação
-            if (resultObj.qualityAnalysis && typeof resultObj.qualityAnalysis.pontuacao === 'number') {
-              analisesDoColaborador.push(resultObj.qualityAnalysis.pontuacao);
+            // Priorizar pontuacaoConsensual, depois gptAnalysis.pontuacao, depois qualityAnalysis.pontuacao
+            let pontuacao = null;
+            if (resultObj.pontuacaoConsensual !== null && resultObj.pontuacaoConsensual !== undefined && typeof resultObj.pontuacaoConsensual === 'number') {
+              pontuacao = resultObj.pontuacaoConsensual;
+            } else if (resultObj.gptAnalysis && typeof resultObj.gptAnalysis.pontuacao === 'number') {
+              pontuacao = resultObj.gptAnalysis.pontuacao;
+            } else if (resultObj.qualityAnalysis && typeof resultObj.qualityAnalysis.pontuacao === 'number') {
+              pontuacao = resultObj.qualityAnalysis.pontuacao;
+            }
+            
+            if (pontuacao !== null) {
+              analisesDoColaborador.push(pontuacao);
             }
           }
         } catch (error) {

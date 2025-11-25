@@ -1,4 +1,4 @@
-// VERSION: v2.3.1 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v2.4.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const UserActivity = require('../models/UserActivity');
@@ -126,7 +126,7 @@ router.get('/dados-completos', async (req, res) => {
       ...botFeedbacks.map(f => f.sessionId)
     ])].filter(Boolean);
     
-    // Extrair períodos disponíveis nos dados
+    // Extrair períodos disponíveis nos dados (APENAS datas com ocorrências reais)
     const periodosDisponiveis = [];
     const allDates = [
       ...userActivities.map(a => new Date(a.timestamp)),
@@ -134,15 +134,9 @@ router.get('/dados-completos', async (req, res) => {
     ];
     
     if (allDates.length > 0) {
-      const minDate = new Date(Math.min(...allDates));
-      const maxDate = new Date(Math.max(...allDates));
-      
-      // Gerar períodos por dia
-      const currentDate = new Date(minDate);
-      while (currentDate <= maxDate) {
-        periodosDisponiveis.push(currentDate.toISOString().split('T')[0]);
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
+      // Usar apenas datas únicas que realmente têm ocorrências (não preencher datas vazias)
+      const datasUnicas = [...new Set(allDates.map(d => d.toISOString().split('T')[0]))];
+      periodosDisponiveis.push(...datasUnicas.sort());
     }
     
     // Calcular resumo básico
@@ -242,10 +236,22 @@ router.get('/metricas-gerais', async (req, res) => {
     ])].filter(Boolean).length;
     const totalBotFeedbacks = botFeedbacks.length;
     
-    // Calcular horário pico
+    // Calcular horário pico (usar moda - hora mais frequente)
     const horarios = userActivities.map(a => new Date(a.createdAt).getHours());
-    const horarioPico = horarios.length > 0 ? 
-      `${Math.max(...horarios)}:00-${Math.max(...horarios) + 1}:00` : "14:00-15:00";
+    let horarioPico = "14:00-15:00";
+    if (horarios.length > 0) {
+      const frequenciaHorarios = {};
+      horarios.forEach(h => {
+        frequenciaHorarios[h] = (frequenciaHorarios[h] || 0) + 1;
+      });
+      const horarioMaisFrequente = Object.entries(frequenciaHorarios)
+        .sort(([,a], [,b]) => b - a)[0]?.[0];
+      if (horarioMaisFrequente !== undefined) {
+        const horaInicio = parseInt(horarioMaisFrequente);
+        const horaFim = horaInicio + 1;
+        horarioPico = `${horaInicio.toString().padStart(2, '0')}:00-${horaFim.toString().padStart(2, '0')}:00`;
+      }
+    }
     
     // Calcular crescimento (simulado)
     const crescimento = { percentual: 15, positivo: true };

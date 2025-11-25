@@ -347,7 +347,7 @@ updatedAt: Date,                // Data de atualização
     clareza: Number,             // Nível de clareza (0-100)
     tensao: Number               // Nível de tensão (0-100)
   },
-  qualityAnalysis: {              // Análise de qualidade
+  qualityAnalysis: {              // Análise de qualidade (Gemini)
     criterios: {                  // Critérios avaliados
       saudacaoAdequada: Boolean,
       escutaAtiva: Boolean,
@@ -359,12 +359,35 @@ updatedAt: Date,                // Data de atualização
       procedimentoIncorreto: Boolean,
       encerramentoBrusco: Boolean
     },
-    pontuacao: Number,           // Pontuação total (0-100)
+    pontuacao: Number,           // Pontuação total (-160 a 100)
     confianca: Number,           // Nível de confiança (0-100)
     palavrasCriticas: [String],  // Palavras-chave críticas
     calculoDetalhado: [String],  // Explicação do cálculo
     analysis: String             // Análise completa em texto
   },
+  gptAnalysis: {                 // Análise GPT (opcional)
+    criterios: {                  // Critérios avaliados pelo GPT
+      saudacaoAdequada: Boolean,
+      escutaAtiva: Boolean,
+      clarezaObjetividade: Boolean,
+      resolucaoQuestao: Boolean,
+      dominioAssunto: Boolean,
+      empatiaCordialidade: Boolean,
+      direcionouPesquisa: Boolean,
+      procedimentoIncorreto: Boolean,
+      encerramentoBrusco: Boolean
+    },
+    pontuacao: Number,           // Pontuação GPT (-160 a 100)
+    palavrasCriticas: [String],  // Palavras-chave críticas identificadas pelo GPT
+    recomendacoes: [String],     // Recomendações do GPT
+    confianca: Number,           // Nível de confiança do GPT (0-100)
+    validacaoGemini: {           // Validação cruzada com Gemini
+      concorda: Boolean,         // Se GPT concorda com Gemini
+      diferencas: [String]       // Lista de diferenças encontradas
+    },
+    analysis: String             // Análise completa do GPT em texto
+  },
+  pontuacaoConsensual: Number,   // Pontuação consensual (média entre Gemini e GPT) (-160 a 100)
   processingTime: Number,         // Tempo de processamento em segundos
   createdAt: Date,                // Data de criação
   updatedAt: Date                 // Data de atualização
