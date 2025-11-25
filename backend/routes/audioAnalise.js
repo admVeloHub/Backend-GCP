@@ -51,6 +51,25 @@ router.post('/generate-upload-url', async (req, res) => {
       }
     }
 
+    // Verificar se já existe upload pendente para esta avaliação
+    if (avaliacaoId) {
+      const existingStatus = await AudioAnaliseStatus.findOne({ 
+        avaliacaoId: avaliacaoId,
+        sent: true 
+      });
+
+      if (existingStatus && !existingStatus.treated) {
+        if (global.emitTraffic) {
+          global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload pendente para esta avaliação');
+        }
+        
+        return res.status(400).json({
+          success: false,
+          error: 'Já existe um upload pendente para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
+        });
+      }
+    }
+
     // Gerar Signed URL
     const uploadData = await generateUploadSignedUrl(nomeArquivo, mimeType);
 
@@ -187,6 +206,78 @@ router.get('/status/:id', async (req, res) => {
   }
 });
 
+// GET /api/audio-analise/status-por-avaliacao/:avaliacaoId - Retorna status de áudio por avaliacaoId
+router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
+  try {
+    const { avaliacaoId } = req.params;
+
+    if (!avaliacaoId) {
+      if (global.emitTraffic) {
+        global.emitTraffic('GET /api/audio-analise/status-por-avaliacao/:avaliacaoId', 'ERROR', 'ID da avaliação é obrigatório');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'ID da avaliação é obrigatório'
+      });
+    }
+
+    const audioStatus = await AudioAnaliseStatus.findOne({ avaliacaoId });
+
+    if (!audioStatus) {
+      if (global.emitTraffic) {
+        global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', 'Nenhum status encontrado');
+      }
+      
+      return res.json({
+        success: true,
+        data: null
+      });
+    }
+
+    if (global.emitTraffic) {
+      global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', `Status encontrado: sent=${audioStatus.sent}, treated=${audioStatus.treated}`);
+    }
+
+    if (global.emitJson) {
+      global.emitJson({
+        tipo: 'OUTBOUND',
+        origem: 'Audio Analise',
+        dados: {
+          avaliacaoId: avaliacaoId,
+          audioId: audioStatus._id,
+          sent: audioStatus.sent,
+          treated: audioStatus.treated,
+          nomeArquivo: audioStatus.nomeArquivo
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        audioId: audioStatus._id,
+        nomeArquivo: audioStatus.nomeArquivo,
+        sent: audioStatus.sent,
+        treated: audioStatus.treated,
+        createdAt: audioStatus.createdAt,
+        updatedAt: audioStatus.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao buscar status por avaliacaoId:', error);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${req.params.avaliacaoId}`, 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor ao buscar status'
+    });
+  }
+});
+
 // GET /api/audio-analise/result/:id - Busca resultado completo da análise
 router.get('/result/:id', async (req, res) => {
   try {
@@ -310,7 +401,8 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       .populate({
         path: 'audioStatusId',
         model: 'AudioAnaliseStatus',
-        select: 'avaliacaoId nomeArquivo'
+        select: 'avaliacaoId nomeArquivo',
+        strictPopulate: false
       })
       .sort({ createdAt: -1 });
 
@@ -376,6 +468,14 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       mediaIA = Math.round((soma / analisesDoColaborador.length) * 100) / 100;
     }
 
+    // Log detalhado para debug
+    console.log(`[DEBUG] Média IA calculada para ${colaboradorNome}:`, {
+      mediaIA,
+      totalAnalises: analisesDoColaborador.length,
+      periodo: { inicio: dataInicio || null, fim: dataFim || null },
+      pontuacoes: analisesDoColaborador
+    });
+
     if (global.emitTraffic) {
       global.emitTraffic(`GET /api/audio-analise/media-agente/${colaboradorNome}`, 'SUCCESS', `Média IA: ${mediaIA || 'N/A'}, Total: ${analisesDoColaborador.length}`);
     }
@@ -390,7 +490,8 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Erro ao calcular média IA do agente:', error);
+    console.error('[ERROR] Erro ao calcular média IA do agente:', error);
+    console.error('[ERROR] Stack trace:', error.stack);
     
     if (global.emitTraffic) {
       global.emitTraffic(`GET /api/audio-analise/media-agente/${req.params.colaboradorNome}`, 'ERROR', error.message);
@@ -398,7 +499,8 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
     
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao calcular média IA'
+      error: 'Erro interno do servidor ao calcular média IA',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -424,7 +526,8 @@ router.get('/listar', async (req, res) => {
       .populate({
         path: 'audioStatusId',
         model: 'AudioAnaliseStatus',
-        select: 'avaliacaoId nomeArquivo'
+        select: 'avaliacaoId nomeArquivo',
+        strictPopulate: false
       })
       .sort({ createdAt: -1 })
       .limit(100); // Limitar a 100 resultados
@@ -476,8 +579,43 @@ router.get('/listar', async (req, res) => {
 
       // Adicionar colaboradorNome ao resultado
       resultObj.colaboradorNome = colaboradorEncontrado || null;
-      analisesComColaborador.push(resultObj);
+      
+      // Mapear campos para o formato esperado pelo frontend
+      const analiseMapeada = {
+        ...resultObj,
+        // Mapear pontuacaoGPT
+        pontuacaoGPT: resultObj.pontuacaoConsensual !== null && resultObj.pontuacaoConsensual !== undefined 
+          ? resultObj.pontuacaoConsensual 
+          : (resultObj.gptAnalysis?.pontuacao || null),
+        // Mapear analiseGPT
+        analiseGPT: resultObj.gptAnalysis?.analysis || null,
+        // Mapear palavrasCriticas
+        palavrasCriticas: resultObj.gptAnalysis?.palavrasCriticas || [],
+        // Mapear confianca
+        confianca: resultObj.gptAnalysis?.confianca || null,
+        // Extrair mes e ano de createdAt
+        mes: resultObj.createdAt ? (() => {
+          const mesesPtBr = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+          ];
+          const date = new Date(resultObj.createdAt);
+          return mesesPtBr[date.getMonth()];
+        })() : null,
+        ano: resultObj.createdAt ? new Date(resultObj.createdAt).getFullYear() : null
+      };
+      
+      analisesComColaborador.push(analiseMapeada);
     }
+
+    // Log detalhado para debug
+    console.log(`[DEBUG] Análises listadas:`, {
+      colaboradorNome,
+      mes,
+      ano,
+      totalEncontradas: analisesComColaborador.length,
+      primeiraAnalise: analisesComColaborador[0] || null
+    });
 
     if (global.emitTraffic) {
       global.emitTraffic('GET /api/audio-analise/listar', 'SUCCESS', `${analisesComColaborador.length} análises encontradas`);
@@ -489,7 +627,8 @@ router.get('/listar', async (req, res) => {
       count: analisesComColaborador.length
     });
   } catch (error) {
-    console.error('Erro ao listar análises:', error);
+    console.error('[ERROR] Erro ao listar análises:', error);
+    console.error('[ERROR] Stack trace:', error.stack);
     
     if (global.emitTraffic) {
       global.emitTraffic('GET /api/audio-analise/listar', 'ERROR', error.message);
@@ -497,7 +636,8 @@ router.get('/listar', async (req, res) => {
     
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao listar análises'
+      error: 'Erro interno do servidor ao listar análises',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

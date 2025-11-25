@@ -289,34 +289,7 @@ updatedAt: Date,                // Data de atualização
   updatedAt: Date                 // Data de atualização
   }
   
-  //schema console_analises.qualidade_avaliacoes_gpt
-  {
-  _id: ObjectId,
-  avaliacao_id: ObjectId,         // Referência à avaliação original (padronizado)
-  analiseGPT: String,             // Análise completa do GPT
-  pontuacaoGPT: Number,           // Pontuação calculada pelo GPT (0-100)
-  criteriosGPT: {                 // Critérios avaliados pelo GPT
-    saudacaoAdequada: Boolean,
-    escutaAtiva: Boolean,
-    clarezaObjetividade: Boolean,  // NOVO critério
-    resolucaoQuestao: Boolean,
-    dominioAssunto: Boolean,       // NOVO critério
-    empatiaCordialidade: Boolean,
-    direcionouPesquisa: Boolean,
-    procedimentoIncorreto: Boolean,
-    encerramentoBrusco: Boolean
-    pontuacaoTotal: Number,         // Pontuação total
-
-  },
-  confianca: Number,              // Nível de confiança (0-100)
-  observacoes: String,            // Observações da avaliação
-  palavrasCriticas: [String],     // Palavras-chave críticas mencionadas
-  calculoDetalhado: [String],     // Explicação do cálculo da pontuação
-  createdAt: Date,                // Data de criação
-  updatedAt: Date                 // Data de atualização (padronizado)
-  }
-  
-  //schema console_analises.audio_analise_status
+    //schema console_analises.audio_analise_status
   {
   _id: ObjectId,                  // ID gerado pelo MongoDB
   nomeArquivo: String,            // Nome do arquivo de áudio
