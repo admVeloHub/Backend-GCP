@@ -1,18 +1,26 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para console_analises
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
+let analisesConnection = null;
 
-// Criar conexão específica para análises
-const analisesConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ANALISES_DB_NAME
-});
+// Função para obter conexão (lazy loading)
+const getAnalisesConnection = () => {
+  if (!analisesConnection) {
+    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+    // Validação feita apenas quando a conexão é realmente necessária
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    analisesConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ANALISES_DB_NAME
+    });
+  }
+  return analisesConnection;
+};
 
 // Schema para controle de envio e exibição do status do processamento de áudio
 const audioAnaliseStatusSchema = new mongoose.Schema({
@@ -74,8 +82,21 @@ audioAnaliseStatusSchema.methods.marcarComoTratado = function() {
   return this.save();
 };
 
-// Modelo
-const AudioAnaliseStatus = analisesConnection.model('AudioAnaliseStatus', audioAnaliseStatusSchema);
+// Modelo - criado com lazy loading
+let AudioAnaliseStatusModel = null;
 
-module.exports = AudioAnaliseStatus;
+const getModel = () => {
+  if (!AudioAnaliseStatusModel) {
+    const connection = getAnalisesConnection();
+    AudioAnaliseStatusModel = connection.model('AudioAnaliseStatus', audioAnaliseStatusSchema);
+  }
+  return AudioAnaliseStatusModel;
+};
+
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});
 
