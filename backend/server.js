@@ -1,4 +1,4 @@
-// VERSION: v4.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -6,6 +6,19 @@ try {
 } catch (error) {
   // Ignorar erro se dotenv não conseguir carregar (normal em produção)
 }
+
+// Tratamento de erros não capturados
+process.on('uncaughtException', (error) => {
+  console.error('❌ Erro não capturado (uncaughtException):', error);
+  console.error('❌ Stack trace:', error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise rejeitada não tratada (unhandledRejection):', reason);
+  console.error('❌ Promise:', promise);
+  process.exit(1);
+});
 
 const express = require('express');
 const cors = require('cors');
@@ -287,9 +300,19 @@ global.broadcastAudioEvent = (audioId, status, data = {}) => {
 // Inicializar servidor
 const startServer = async () => {
   try {
+    console.log('🔄 Iniciando servidor...');
+    console.log(`📋 PORT: ${PORT}`);
+    console.log(`📋 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📋 MONGODB_URI configurada: ${process.env.MONGODB_URI ? 'SIM' : 'NÃO'}`);
+    
     // Conectar ao MongoDB
+    console.log('🔄 Conectando ao MongoDB...');
     await connectToDatabase();
+    console.log('✅ MongoDB conectado via MongoClient');
+    
+    console.log('🔄 Inicializando collections...');
     await initializeCollections();
+    console.log('✅ Collections inicializadas');
     
     // Configurar Mongoose
     // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
@@ -297,6 +320,8 @@ const startServer = async () => {
       throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
     }
     const MONGODB_URI = process.env.MONGODB_URI;
+    
+    console.log('🔄 Conectando Mongoose...');
     await mongoose.connect(MONGODB_URI, {
       dbName: 'console_conteudo'
     });
@@ -306,6 +331,7 @@ const startServer = async () => {
     console.log(`🔗 Mongoose: Conectado ao console_conteudo`);
     
     // Iniciar servidor
+    console.log(`🔄 Iniciando servidor HTTP na porta ${PORT}...`);
     server.listen(PORT, () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`📊 Console de Conteúdo VeloHub v4.2.0`);
@@ -313,8 +339,19 @@ const startServer = async () => {
       console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
       console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
     });
+    
+    // Tratamento de erros do servidor
+    server.on('error', (error) => {
+      console.error('❌ Erro no servidor HTTP:', error);
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Porta ${PORT} já está em uso`);
+      }
+      process.exit(1);
+    });
+    
   } catch (error) {
     console.error('❌ Erro ao iniciar servidor:', error);
+    console.error('❌ Stack trace:', error.stack);
     process.exit(1);
   }
 };
