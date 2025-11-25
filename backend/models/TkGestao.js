@@ -10,11 +10,9 @@ class TkGestao {
   // Obter coleção do banco console_chamados
   async getCollection() {
     const { MongoClient } = require('mongodb');
-    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-    if (!process.env.MONGODB_URI) {
-      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-    }
-    const MONGODB_URI = process.env.MONGODB_URI;
+    const { getMongoUri } = require('../config/mongodb');
+    // MONGO_ENV deve ser configurada via variável de ambiente (secrets)
+    const MONGODB_URI = getMongoUri();
     
     // Conectar ao banco específico console_chamados
     const client = new MongoClient(MONGODB_URI);

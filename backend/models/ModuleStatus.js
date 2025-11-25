@@ -1,5 +1,6 @@
-// VERSION: v2.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
+const { getMongoUri } = require('../config/mongodb');
 
 // Configurar conexões específicas para os databases
 // Lazy loading: conexões criadas apenas quando os modelos são usados pela primeira vez
@@ -11,10 +12,7 @@ let analisesConnection = null;
 // Função para obter conexão de configuração (lazy loading)
 const getConfigConnection = () => {
   if (!configConnection) {
-    const MONGODB_URI = process.env.MONGODB_URI;
-    if (!MONGODB_URI) {
-      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-    }
+    const MONGODB_URI = getMongoUri();
     configConnection = mongoose.createConnection(MONGODB_URI, {
       dbName: CONFIG_DB_NAME,
       useNewUrlParser: true,
@@ -27,10 +25,7 @@ const getConfigConnection = () => {
 // Função para obter conexão de análises (lazy loading)
 const getAnalisesConnection = () => {
   if (!analisesConnection) {
-    const MONGODB_URI = process.env.MONGODB_URI;
-    if (!MONGODB_URI) {
-      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-    }
+    const MONGODB_URI = getMongoUri();
     analisesConnection = mongoose.createConnection(MONGODB_URI, {
       dbName: ANALISES_DB_NAME,
       useNewUrlParser: true,

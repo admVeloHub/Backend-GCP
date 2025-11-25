@@ -3,14 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { MongoClient } = require('mongodb');
 
-// Connection string do MongoDB - validação feita quando necessário (lazy)
-const getMongoUri = () => {
-  const MONGODB_URI = process.env.MONGODB_URI;
-  if (!MONGODB_URI) {
-    throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-  }
-  return MONGODB_URI;
-};
+// Connection string do MongoDB - usando helper centralizado
+const { getMongoUri } = require('../config/mongodb');
 
 // Database fixo para certificados e reprovações
 const ACADEMY_REGISTROS_DB = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';

@@ -303,7 +303,7 @@ const startServer = async () => {
     console.log('🔄 Iniciando servidor...');
     console.log(`📋 PORT: ${PORT}`);
     console.log(`📋 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📋 MONGODB_URI configurada: ${process.env.MONGODB_URI ? 'SIM' : 'NÃO'}`);
+    console.log(`📋 MONGO_ENV configurada: ${process.env.MONGO_ENV ? 'SIM' : 'NÃO'}`);
     
     // Conectar ao MongoDB
     console.log('🔄 Conectando ao MongoDB...');
@@ -315,11 +315,9 @@ const startServer = async () => {
     console.log('✅ Collections inicializadas');
     
     // Configurar Mongoose
-    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-    if (!process.env.MONGODB_URI) {
-      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-    }
-    const MONGODB_URI = process.env.MONGODB_URI;
+    // MONGO_ENV deve ser configurada via variável de ambiente (secrets)
+    const { getMongoUri } = require('./config/mongodb');
+    const MONGODB_URI = getMongoUri();
     
     console.log('🔄 Conectando Mongoose...');
     await mongoose.connect(MONGODB_URI, {

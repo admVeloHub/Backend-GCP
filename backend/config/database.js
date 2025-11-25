@@ -1,5 +1,6 @@
-// VERSION: v3.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v3.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { MongoClient } = require('mongodb');
+const { getMongoUri } = require('./mongodb');
 
 // Configuração do MongoDB
 const DB_NAME = process.env.MONGODB_DB_NAME || 'console_conteudo';
@@ -16,12 +17,9 @@ let academyDb;
 // Conectar ao MongoDB
 const connectToDatabase = async () => {
   try {
-    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+    // MONGO_ENV deve ser configurada via variável de ambiente (secrets)
     // Validação movida para dentro da função para permitir carregamento do módulo
-    if (!process.env.MONGODB_URI) {
-      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-    }
-    const MONGODB_URI = process.env.MONGODB_URI;
+    const MONGODB_URI = getMongoUri();
     
     if (!client) {
       client = new MongoClient(MONGODB_URI, {
