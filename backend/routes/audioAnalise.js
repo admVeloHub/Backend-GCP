@@ -1,7 +1,7 @@
-// VERSION: v1.4.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v2.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
-const AudioAnaliseStatus = require('../models/AudioAnaliseStatus');
+// AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
 const { generateUploadSignedUrl, validateFileType, validateFileSize } = require('../config/gcs');
@@ -53,12 +53,9 @@ router.post('/generate-upload-url', async (req, res) => {
 
     // Verificar se já existe upload pendente para esta avaliação
     if (avaliacaoId) {
-      const existingStatus = await AudioAnaliseStatus.findOne({ 
-        avaliacaoId: avaliacaoId,
-        sent: true 
-      });
-
-      if (existingStatus && !existingStatus.treated) {
+      const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
+      
+      if (avaliacao && avaliacao.audioSent && !avaliacao.audioTreated) {
         if (global.emitTraffic) {
           global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload pendente para esta avaliação');
         }
@@ -73,21 +70,30 @@ router.post('/generate-upload-url', async (req, res) => {
     // Gerar Signed URL
     const uploadData = await generateUploadSignedUrl(nomeArquivo, mimeType);
 
-    // Criar registro no MongoDB com sent=true e treated=false
-    const audioStatusData = {
-      nomeArquivo: uploadData.fileName,
-      sent: true,
-      treated: false
-    };
-
-    // Adicionar avaliacaoId se fornecido
+    // Atualizar QualidadeAvaliacao diretamente com campos de status de áudio
     if (avaliacaoId) {
-      audioStatusData.avaliacaoId = avaliacaoId;
+      const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
+      
+      if (!avaliacao) {
+        if (global.emitTraffic) {
+          global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Avaliação não encontrada');
+        }
+        
+        return res.status(404).json({
+          success: false,
+          error: 'Avaliação não encontrada'
+        });
+      }
+      
+      // Atualizar campos de status de áudio
+      avaliacao.nomeArquivoAudio = uploadData.fileName;
+      avaliacao.audioSent = true;
+      avaliacao.audioTreated = false;
+      avaliacao.audioCreatedAt = new Date();
+      avaliacao.audioUpdatedAt = new Date();
+      
+      await avaliacao.save();
     }
-
-    const audioStatus = new AudioAnaliseStatus(audioStatusData);
-
-    await audioStatus.save();
 
     if (global.emitTraffic) {
       global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'SUCCESS', `Signed URL gerada para ${uploadData.fileName}`);
@@ -98,7 +104,7 @@ router.post('/generate-upload-url', async (req, res) => {
         tipo: 'OUTBOUND',
         origem: 'Audio Analise',
         dados: {
-          audioId: audioStatus._id,
+          avaliacaoId: avaliacaoId || null,
           uploadUrl: uploadData.url,
           fileName: uploadData.fileName,
           expiresIn: uploadData.expiresIn
@@ -109,7 +115,7 @@ router.post('/generate-upload-url', async (req, res) => {
     res.json({
       success: true,
       data: {
-        audioId: audioStatus._id,
+        avaliacaoId: avaliacaoId || null,
         uploadUrl: uploadData.url,
         fileName: uploadData.fileName,
         bucket: uploadData.bucket,
@@ -131,35 +137,52 @@ router.post('/generate-upload-url', async (req, res) => {
 });
 
 // GET /api/audio-analise/status/:id - Retorna status do processamento (verifica sent e treated)
+// Agora aceita avaliacaoId em vez de audioStatusId
 router.get('/status/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const audioStatus = await AudioAnaliseStatus.findById(id);
+    const avaliacao = await QualidadeAvaliacao.findById(id);
 
-    if (!audioStatus) {
+    if (!avaliacao) {
       if (global.emitTraffic) {
-        global.emitTraffic(`GET /api/audio-analise/status/${id}`, 'ERROR', 'Registro não encontrado');
+        global.emitTraffic(`GET /api/audio-analise/status/${id}`, 'ERROR', 'Avaliação não encontrada');
       }
       
       return res.status(404).json({
         success: false,
-        error: 'Registro não encontrado'
+        error: 'Avaliação não encontrada'
+      });
+    }
+
+    // Verificar se tem status de áudio
+    if (!avaliacao.audioSent) {
+      return res.json({
+        success: true,
+        data: {
+          avaliacaoId: avaliacao._id,
+          nomeArquivoAudio: null,
+          status: 'pendente',
+          sent: false,
+          treated: false,
+          audioCreatedAt: null,
+          audioUpdatedAt: null
+        }
       });
     }
 
     // Determinar status baseado em sent e treated
     let status = 'pendente';
-    if (audioStatus.sent && !audioStatus.treated) {
+    if (avaliacao.audioSent && !avaliacao.audioTreated) {
       status = 'processando';
-    } else if (audioStatus.treated) {
+    } else if (avaliacao.audioTreated) {
       status = 'concluido';
     }
 
     // Disparar evento SSE se status mudou para concluido
     if (status === 'concluido' && global.broadcastAudioEvent) {
-      global.broadcastAudioEvent(audioStatus._id.toString(), 'concluido', {
-        nomeArquivo: audioStatus.nomeArquivo
+      global.broadcastAudioEvent(avaliacao._id.toString(), 'concluido', {
+        nomeArquivo: avaliacao.nomeArquivoAudio
       });
     }
 
@@ -172,10 +195,10 @@ router.get('/status/:id', async (req, res) => {
         tipo: 'OUTBOUND',
         origem: 'Audio Analise',
         dados: {
-          audioId: audioStatus._id,
+          avaliacaoId: avaliacao._id,
           status: status,
-          sent: audioStatus.sent,
-          treated: audioStatus.treated
+          sent: avaliacao.audioSent,
+          treated: avaliacao.audioTreated
         }
       });
     }
@@ -183,13 +206,13 @@ router.get('/status/:id', async (req, res) => {
     res.json({
       success: true,
       data: {
-        audioId: audioStatus._id,
-        nomeArquivo: audioStatus.nomeArquivo,
+        avaliacaoId: avaliacao._id,
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
         status: status,
-        sent: audioStatus.sent,
-        treated: audioStatus.treated,
-        createdAt: audioStatus.createdAt,
-        updatedAt: audioStatus.updatedAt
+        sent: avaliacao.audioSent,
+        treated: avaliacao.audioTreated,
+        audioCreatedAt: avaliacao.audioCreatedAt,
+        audioUpdatedAt: avaliacao.audioUpdatedAt
       }
     });
   } catch (error) {
@@ -222,11 +245,11 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
       });
     }
 
-    const audioStatus = await AudioAnaliseStatus.findOne({ avaliacaoId });
+    const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
 
-    if (!audioStatus) {
+    if (!avaliacao) {
       if (global.emitTraffic) {
-        global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', 'Nenhum status encontrado');
+        global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', 'Avaliação não encontrada');
       }
       
       return res.json({
@@ -235,8 +258,16 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
       });
     }
 
+    // Verificar se tem status de áudio
+    if (!avaliacao.audioSent) {
+      return res.json({
+        success: true,
+        data: null
+      });
+    }
+
     if (global.emitTraffic) {
-      global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', `Status encontrado: sent=${audioStatus.sent}, treated=${audioStatus.treated}`);
+      global.emitTraffic(`GET /api/audio-analise/status-por-avaliacao/${avaliacaoId}`, 'SUCCESS', `Status encontrado: sent=${avaliacao.audioSent}, treated=${avaliacao.audioTreated}`);
     }
 
     if (global.emitJson) {
@@ -245,10 +276,9 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
         origem: 'Audio Analise',
         dados: {
           avaliacaoId: avaliacaoId,
-          audioId: audioStatus._id,
-          sent: audioStatus.sent,
-          treated: audioStatus.treated,
-          nomeArquivo: audioStatus.nomeArquivo
+          sent: avaliacao.audioSent,
+          treated: avaliacao.audioTreated,
+          nomeArquivoAudio: avaliacao.nomeArquivoAudio
         }
       });
     }
@@ -256,12 +286,12 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
     res.json({
       success: true,
       data: {
-        audioId: audioStatus._id,
-        nomeArquivo: audioStatus.nomeArquivo,
-        sent: audioStatus.sent,
-        treated: audioStatus.treated,
-        createdAt: audioStatus.createdAt,
-        updatedAt: audioStatus.updatedAt
+        avaliacaoId: avaliacao._id,
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+        sent: avaliacao.audioSent,
+        treated: avaliacao.audioTreated,
+        audioCreatedAt: avaliacao.audioCreatedAt,
+        audioUpdatedAt: avaliacao.audioUpdatedAt
       }
     });
   } catch (error) {
@@ -279,12 +309,18 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
 });
 
 // GET /api/audio-analise/result/:id - Busca resultado completo da análise
+// Agora aceita avaliacaoId em vez de audioStatusId
 router.get('/result/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Buscar resultado da análise
-    const result = await AudioAnaliseResult.findOne({ audioStatusId: id });
+    // Buscar resultado da análise usando avaliacaoMonitorId
+    const result = await AudioAnaliseResult.findOne({ avaliacaoMonitorId: id })
+      .populate({
+        path: 'avaliacaoMonitorId',
+        model: 'QualidadeAvaliacao',
+        strictPopulate: false
+      });
 
     if (!result) {
       if (global.emitTraffic) {
@@ -328,37 +364,43 @@ router.get('/result/:id', async (req, res) => {
 });
 
 // POST /api/audio-analise/notify-completed - Notificação de conclusão (chamado pelo worker)
+// Agora recebe avaliacaoId em vez de audioId
 router.post('/notify-completed', async (req, res) => {
   try {
-    const { audioId } = req.body;
+    const { avaliacaoId } = req.body;
 
-    if (!audioId) {
+    if (!avaliacaoId) {
       return res.status(400).json({
         success: false,
-        error: 'audioId é obrigatório'
+        error: 'avaliacaoId é obrigatório'
       });
     }
 
-    // Buscar status
-    const audioStatus = await AudioAnaliseStatus.findById(audioId);
+    // Buscar avaliação e atualizar audioTreated
+    const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
 
-    if (!audioStatus) {
+    if (!avaliacao) {
       return res.status(404).json({
         success: false,
-        error: 'Registro não encontrado'
+        error: 'Avaliação não encontrada'
       });
     }
+
+    // Atualizar audioTreated diretamente na avaliação
+    avaliacao.audioTreated = true;
+    avaliacao.audioUpdatedAt = new Date();
+    await avaliacao.save();
 
     // Disparar evento SSE de conclusão
     if (global.broadcastAudioEvent) {
-      global.broadcastAudioEvent(audioId, 'concluido', {
-        nomeArquivo: audioStatus.nomeArquivo,
-        treated: audioStatus.treated
+      global.broadcastAudioEvent(avaliacaoId, 'concluido', {
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+        treated: avaliacao.audioTreated
       });
     }
 
     if (global.emitTraffic) {
-      global.emitTraffic('POST /api/audio-analise/notify-completed', 'SUCCESS', `Notificação enviada para audioId: ${audioId}`);
+      global.emitTraffic('POST /api/audio-analise/notify-completed', 'SUCCESS', `Notificação enviada para avaliacaoId: ${avaliacaoId}`);
     }
 
     res.json({
@@ -396,12 +438,12 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       });
     }
 
-    // Buscar todas as análises com populate do audioStatusId
+    // Buscar todas as análises com populate do avaliacaoMonitorId
     const results = await AudioAnaliseResult.find({})
       .populate({
-        path: 'audioStatusId',
-        model: 'AudioAnaliseStatus',
-        select: 'avaliacaoId nomeArquivo',
+        path: 'avaliacaoMonitorId',
+        model: 'QualidadeAvaliacao',
+        select: 'colaboradorNome dataLigacao',
         strictPopulate: false
       })
       .sort({ createdAt: -1 });
@@ -412,11 +454,10 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
     for (const result of results) {
       const resultObj = result.toObject();
       
-      // Se houver avaliacaoId, buscar a avaliação para obter colaboradorNome
-      if (resultObj.audioStatusId && resultObj.audioStatusId.avaliacaoId) {
+      // Se houver avaliacaoMonitorId populado, verificar colaboradorNome diretamente
+      if (resultObj.avaliacaoMonitorId && resultObj.avaliacaoMonitorId.colaboradorNome) {
         try {
-          const avaliacao = await QualidadeAvaliacao.findById(resultObj.audioStatusId.avaliacaoId);
-          if (avaliacao && avaliacao.colaboradorNome === colaboradorNome) {
+          if (resultObj.avaliacaoMonitorId.colaboradorNome === colaboradorNome) {
             // Verificar filtro de período se fornecido
             if (dataInicio || dataFim) {
               const dataCriacao = new Date(resultObj.createdAt);
@@ -521,33 +562,35 @@ router.get('/listar', async (req, res) => {
       });
     }
 
-    // Buscar todas as análises com populate do audioStatusId
+    // Buscar todas as análises com populate do avaliacaoMonitorId
     const results = await AudioAnaliseResult.find({})
       .populate({
-        path: 'audioStatusId',
-        model: 'AudioAnaliseStatus',
-        select: 'avaliacaoId nomeArquivo',
+        path: 'avaliacaoMonitorId',
+        model: 'QualidadeAvaliacao',
+        select: 'colaboradorNome dataLigacao',
         strictPopulate: false
       })
       .sort({ createdAt: -1 })
       .limit(100); // Limitar a 100 resultados
 
-    // Processar resultados e adicionar colaboradorNome quando houver avaliacaoId
+    // Processar resultados e adicionar colaboradorNome diretamente do populate
     const analisesComColaborador = [];
     
     for (const result of results) {
       const resultObj = result.toObject();
       let colaboradorEncontrado = null;
 
-      // Se houver avaliacaoId, buscar a avaliação para obter colaboradorNome
-      if (resultObj.audioStatusId && resultObj.audioStatusId.avaliacaoId) {
+      // Obter colaboradorNome diretamente do populate de avaliacaoMonitorId
+      let avaliacaoData = null;
+      if (resultObj.avaliacaoMonitorId) {
         try {
-          const avaliacao = await QualidadeAvaliacao.findById(resultObj.audioStatusId.avaliacaoId);
-          if (avaliacao) {
-            colaboradorEncontrado = avaliacao.colaboradorNome;
-          }
+          colaboradorEncontrado = resultObj.avaliacaoMonitorId.colaboradorNome;
+          avaliacaoData = {
+            dataLigacao: resultObj.avaliacaoMonitorId.dataLigacao,
+            avaliacaoId: resultObj.avaliacaoMonitorId._id
+          };
         } catch (error) {
-          console.error('Erro ao buscar avaliação:', error);
+          console.error('Erro ao processar avaliação:', error);
         }
       }
 
@@ -590,9 +633,17 @@ router.get('/listar', async (req, res) => {
         // Mapear analiseGPT
         analiseGPT: resultObj.gptAnalysis?.analysis || null,
         // Mapear palavrasCriticas
-        palavrasCriticas: resultObj.gptAnalysis?.palavrasCriticas || [],
+        palavrasCriticas: resultObj.gptAnalysis?.palavrasCriticas || resultObj.qualityAnalysis?.palavrasCriticas || [],
         // Mapear confianca
         confianca: resultObj.gptAnalysis?.confianca || null,
+        // Dados da avaliação
+        dataLigacao: avaliacaoData?.dataLigacao || null,
+        avaliacaoId: resultObj.avaliacaoMonitorId?._id || null,
+        // Campos de emoção e nuance
+        emotion: resultObj.emotion || null,
+        nuance: resultObj.nuance || null,
+        // Cálculo detalhado
+        calculoDetalhado: resultObj.qualityAnalysis?.calculoDetalhado || null,
         // Extrair mes e ano de createdAt
         mes: resultObj.createdAt ? (() => {
           const mesesPtBr = [
@@ -643,22 +694,33 @@ router.get('/listar', async (req, res) => {
 });
 
 // GET /api/audio-analise/:id - Busca registro completo por ID
+// Agora busca QualidadeAvaliacao em vez de AudioAnaliseStatus
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const audioStatus = await AudioAnaliseStatus.findById(id);
+    const avaliacao = await QualidadeAvaliacao.findById(id);
 
-    if (!audioStatus) {
+    if (!avaliacao) {
       if (global.emitTraffic) {
-        global.emitTraffic(`GET /api/audio-analise/${id}`, 'ERROR', 'Registro não encontrado');
+        global.emitTraffic(`GET /api/audio-analise/${id}`, 'ERROR', 'Avaliação não encontrada');
       }
       
       return res.status(404).json({
         success: false,
-        error: 'Registro não encontrado'
+        error: 'Avaliação não encontrada'
       });
     }
+
+    // Retornar apenas campos de status de áudio
+    const audioStatusData = {
+      avaliacaoId: avaliacao._id,
+      nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+      audioSent: avaliacao.audioSent,
+      audioTreated: avaliacao.audioTreated,
+      audioCreatedAt: avaliacao.audioCreatedAt,
+      audioUpdatedAt: avaliacao.audioUpdatedAt
+    };
 
     if (global.emitTraffic) {
       global.emitTraffic(`GET /api/audio-analise/${id}`, 'SUCCESS', 'Registro encontrado');
@@ -668,13 +730,13 @@ router.get('/:id', async (req, res) => {
       global.emitJson({
         tipo: 'OUTBOUND',
         origem: 'Audio Analise',
-        dados: audioStatus.toObject()
+        dados: audioStatusData
       });
     }
 
     res.json({
       success: true,
-      data: audioStatus
+      data: audioStatusData
     });
   } catch (error) {
     console.error('Erro ao buscar registro:', error);
@@ -686,6 +748,119 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// PUT /api/audio-analise/:id/editar-analise - Editar campo analysis da análise
+router.put('/:id/editar-analise', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { analysis, tipo = 'gpt' } = req.body;
+
+    if (!id) {
+      if (global.emitTraffic) {
+        global.emitTraffic('PUT /api/audio-analise/:id/editar-analise', 'ERROR', 'ID da análise é obrigatório');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'ID da análise é obrigatório'
+      });
+    }
+
+    if (!analysis || typeof analysis !== 'string') {
+      if (global.emitTraffic) {
+        global.emitTraffic('PUT /api/audio-analise/:id/editar-analise', 'ERROR', 'Campo analysis é obrigatório e deve ser uma string');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Campo analysis é obrigatório e deve ser uma string'
+      });
+    }
+
+    if (tipo !== 'gpt' && tipo !== 'quality') {
+      if (global.emitTraffic) {
+        global.emitTraffic('PUT /api/audio-analise/:id/editar-analise', 'ERROR', 'Tipo deve ser "gpt" ou "quality"');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Tipo deve ser "gpt" ou "quality"'
+      });
+    }
+
+    // Buscar a análise
+    const analise = await AudioAnaliseResult.findById(id);
+
+    if (!analise) {
+      if (global.emitTraffic) {
+        global.emitTraffic(`PUT /api/audio-analise/${id}/editar-analise`, 'ERROR', 'Análise não encontrada');
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Análise não encontrada'
+      });
+    }
+
+    // Atualizar o campo analysis conforme o tipo
+    if (tipo === 'gpt') {
+      if (!analise.gptAnalysis) {
+        analise.gptAnalysis = {};
+      }
+      analise.gptAnalysis.analysis = analysis;
+    } else {
+      if (!analise.qualityAnalysis) {
+        analise.qualityAnalysis = {};
+      }
+      analise.qualityAnalysis.analysis = analysis;
+    }
+
+    // Salvar alterações
+    await analise.save();
+
+    // Log de auditoria
+    console.log(`[AUDITORIA] Análise ${id} editada - Tipo: ${tipo}, Data: ${new Date().toISOString()}`);
+
+    if (global.emitTraffic) {
+      global.emitTraffic(`PUT /api/audio-analise/${id}/editar-analise`, 'SUCCESS', `Análise ${tipo} editada com sucesso`);
+    }
+
+    if (global.emitJson) {
+      global.emitJson({
+        tipo: 'OUTBOUND',
+        origem: 'Audio Analise',
+        dados: {
+          id: analise._id,
+          tipo: tipo,
+          analysis: analysis.substring(0, 100) + '...' // Primeiros 100 caracteres para log
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Análise editada com sucesso',
+      data: {
+        id: analise._id,
+        tipo: tipo,
+        analysis: analise.gptAnalysis?.analysis || analise.qualityAnalysis?.analysis
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR] Erro ao editar análise:', error);
+    console.error('[ERROR] Stack trace:', error.stack);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic(`PUT /api/audio-analise/${req.params.id}/editar-analise`, 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor ao editar análise',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

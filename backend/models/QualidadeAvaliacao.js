@@ -1,4 +1,4 @@
-// VERSION: v2.0.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v2.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -73,6 +73,28 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Campos de status de áudio (fundidos de audio_analise_status)
+  nomeArquivoAudio: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  audioSent: {
+    type: Boolean,
+    default: false
+  },
+  audioTreated: {
+    type: Boolean,
+    default: false
+  },
+  audioCreatedAt: {
+    type: Date,
+    default: null
+  },
+  audioUpdatedAt: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -100,6 +122,9 @@ qualidadeAvaliacaoSchema.index({ colaboradorNome: 1 });
 qualidadeAvaliacaoSchema.index({ avaliador: 1 });
 qualidadeAvaliacaoSchema.index({ mes: 1, ano: 1 });
 qualidadeAvaliacaoSchema.index({ createdAt: -1 });
+qualidadeAvaliacaoSchema.index({ audioSent: 1 });
+qualidadeAvaliacaoSchema.index({ audioTreated: 1 });
+qualidadeAvaliacaoSchema.index({ nomeArquivoAudio: 1 });
 
 // Modelo - criado com lazy loading
 let QualidadeAvaliacaoModel = null;

@@ -1,4 +1,4 @@
-// VERSION: v1.6.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v2.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -38,10 +38,10 @@ const nuanceSchema = new mongoose.Schema({
 
 // Schema principal para resultados da análise de áudio
 const audioAnaliseResultSchema = new mongoose.Schema({
-  audioStatusId: {
+  avaliacaoMonitorId: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
-    ref: 'AudioAnaliseStatus'
+    ref: 'QualidadeAvaliacao'
   },
   nomeArquivo: {
     type: String,
@@ -117,7 +117,7 @@ const audioAnaliseResultSchema = new mongoose.Schema({
 });
 
 // Índices
-audioAnaliseResultSchema.index({ audioStatusId: 1 });
+audioAnaliseResultSchema.index({ avaliacaoMonitorId: 1 });
 audioAnaliseResultSchema.index({ nomeArquivo: 1 });
 audioAnaliseResultSchema.index({ createdAt: -1 });
 

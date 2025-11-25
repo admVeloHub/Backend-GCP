@@ -1,9 +1,16 @@
 // VERSION: v1.7.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// ⚠️ DEPRECATED: Este modelo foi fundido em QualidadeAvaliacao.js
+// Os campos nomeArquivo, sent, treated foram movidos para qualidade_avaliacoes
+// como nomeArquivoAudio, audioSent, audioTreated
+// Este arquivo é mantido apenas para compatibilidade durante a migração
+// TODO: Remover após migração completa e validação
+
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
 
 // Schema para controle de envio e exibição do status do processamento de áudio
+// ⚠️ DEPRECATED - Use QualidadeAvaliacao com campos audioSent, audioTreated, nomeArquivoAudio
 const audioAnaliseStatusSchema = new mongoose.Schema({
   nomeArquivo: {
     type: String,
