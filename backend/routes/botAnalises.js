@@ -78,7 +78,7 @@ router.get('/dados-completos', async (req, res) => {
     ] = await Promise.all([
       // Buscar todos os registros de user_activity no período
       UserActivity.find({
-        timestamp: {
+        createdAt: {
           $gte: startDate,
           $lte: endDate
         }
@@ -129,7 +129,7 @@ router.get('/dados-completos', async (req, res) => {
     // Extrair períodos disponíveis nos dados (APENAS datas com ocorrências reais)
     const periodosDisponiveis = [];
     const allDates = [
-      ...userActivities.map(a => new Date(a.timestamp)),
+      ...userActivities.map(a => new Date(a.createdAt)),
       ...botFeedbacks.map(f => new Date(f.createdAt))
     ];
     
@@ -323,7 +323,7 @@ router.get('/dados-uso-operacao', async (req, res) => {
     // Buscar dados
     const [userActivities, botFeedbacks] = await Promise.all([
       UserActivity.find({
-        timestamp: { $gte: startDate, $lte: endDate }
+        createdAt: { $gte: startDate, $lte: endDate }
       }).lean(),
       BotFeedback.find({
         createdAt: { $gte: startDate, $lte: endDate }
@@ -337,7 +337,7 @@ router.get('/dados-uso-operacao', async (req, res) => {
     
     // Processar user activities
     userActivities.forEach(activity => {
-      const date = new Date(activity.timestamp).toISOString().split('T')[0];
+      const date = new Date(activity.createdAt).toISOString().split('T')[0];
       totalUso[date] = (totalUso[date] || 0) + 1;
     });
     
@@ -384,7 +384,7 @@ router.get('/perguntas-frequentes', async (req, res) => {
     
     // Buscar perguntas no período
     const userActivities = await UserActivity.find({
-      timestamp: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: startDate, $lte: endDate },
       action: 'question_asked'
     }).lean();
     
@@ -428,7 +428,7 @@ router.get('/ranking-agentes', async (req, res) => {
     // Buscar dados
     const [userActivities, botFeedbacks] = await Promise.all([
       UserActivity.find({
-        timestamp: { $gte: startDate, $lte: endDate }
+        createdAt: { $gte: startDate, $lte: endDate }
       }).lean(),
       BotFeedback.find({
         createdAt: { $gte: startDate, $lte: endDate }
@@ -495,7 +495,7 @@ router.get('/lista-atividades', async (req, res) => {
     
     // Buscar atividades
     const userActivities = await UserActivity.find({
-      timestamp: { $gte: startDate, $lte: endDate }
+      createdAt: { $gte: startDate, $lte: endDate }
     }).lean();
     
     // Converter para formato esperado
@@ -504,8 +504,8 @@ router.get('/lista-atividades', async (req, res) => {
       .map(activity => ({
         usuario: activity.userId || 'SISTEMA',
         pergunta: activity.details.question,
-        data: new Date(activity.timestamp).toISOString().split('T')[0],
-        horario: new Date(activity.timestamp).toTimeString().split(' ')[0],
+        data: new Date(activity.createdAt).toISOString().split('T')[0],
+        horario: new Date(activity.createdAt).toTimeString().split(' ')[0],
         acao: activity.action
       }))
       .sort((a, b) => new Date(b.data + ' ' + b.horario) - new Date(a.data + ' ' + a.horario))
@@ -536,7 +536,7 @@ router.get('/analises-especificas', async (req, res) => {
     // Buscar dados
     const [userActivities, botFeedbacks] = await Promise.all([
       UserActivity.find({
-        timestamp: { $gte: startDate, $lte: endDate }
+        createdAt: { $gte: startDate, $lte: endDate }
       }).lean(),
       BotFeedback.find({
         createdAt: { $gte: startDate, $lte: endDate }
