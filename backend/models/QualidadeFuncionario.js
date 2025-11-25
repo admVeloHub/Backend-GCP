@@ -1,4 +1,4 @@
-// VERSION: v1.6.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.7.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -159,6 +159,12 @@ const getModel = () => {
   if (!QualidadeFuncionarioModel) {
     try {
       const connection = getAnalisesConnection();
+      
+      // Validar que conexão existe e está válida
+      if (!connection) {
+        throw new Error('Conexão MongoDB não foi criada');
+      }
+      
       QualidadeFuncionarioModel = connection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
 
       // Método estático para obter funcionários ativos (não desligados e não afastados)
@@ -190,9 +196,45 @@ const getModel = () => {
   return QualidadeFuncionarioModel;
 };
 
-module.exports = new Proxy({}, {
+// Criar função construtora que delega para o modelo real
+const QualidadeFuncionarioConstructor = function(...args) {
+  const model = getModel();
+  if (!model) {
+    throw new Error('Modelo QualidadeFuncionario não foi inicializado');
+  }
+  return new model(...args);
+};
+
+// Copiar propriedades estáticas do modelo para o construtor
+Object.setPrototypeOf(QualidadeFuncionarioConstructor.prototype, mongoose.Model.prototype);
+
+module.exports = new Proxy(QualidadeFuncionarioConstructor, {
   get: (target, prop) => {
+    // Propriedades especiais do Proxy
+    if (prop === Symbol.toStringTag) {
+      return 'QualidadeFuncionario';
+    }
+    
     const model = getModel();
-    return model[prop];
+    if (!model) {
+      throw new Error('Modelo QualidadeFuncionario não foi inicializado');
+    }
+    
+    // Se a propriedade existe no modelo, retornar do modelo
+    if (prop in model || typeof model[prop] !== 'undefined') {
+      const value = model[prop];
+      // Bind métodos para manter contexto correto
+      if (typeof value === 'function' && prop !== 'constructor') {
+        return value.bind(model);
+      }
+      return value;
+    }
+    
+    // Caso contrário, retornar do target (função construtora)
+    return target[prop];
+  },
+  construct: (target, args) => {
+    const model = getModel();
+    return new model(...args);
   }
 });
