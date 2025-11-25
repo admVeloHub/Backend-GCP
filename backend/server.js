@@ -1,4 +1,12 @@
-// VERSION: v4.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
+// No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
+try {
+  require('dotenv').config();
+} catch (error) {
+  // Ignorar erro se dotenv não conseguir carregar (normal em produção)
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -9,7 +17,6 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const { connectToDatabase, checkDatabaseHealth } = require('./config/database');
 const { initializeCollections, getCollectionsStats } = require('./config/collections');
-require('dotenv').config();
 
 // Importar rotas
 const artigosRoutes = require('./routes/artigos');
