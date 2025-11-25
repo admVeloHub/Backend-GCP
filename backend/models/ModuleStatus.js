@@ -1,28 +1,44 @@
-// VERSION: v2.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexões específicas para os databases
+// Lazy loading: conexões criadas apenas quando os modelos são usados pela primeira vez
 const CONFIG_DB_NAME = process.env.CONSOLE_CONFIG_DB || 'console_config';
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+let configConnection = null;
+let analisesConnection = null;
 
-// Criar conexão específica para o database de configuração (module_status)
-const configConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: CONFIG_DB_NAME,
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// Função para obter conexão de configuração (lazy loading)
+const getConfigConnection = () => {
+  if (!configConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    configConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: CONFIG_DB_NAME,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+  }
+  return configConnection;
+};
 
-// Criar conexão específica para o database de análises (faq_bot)
-const analisesConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ANALISES_DB_NAME,
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// Função para obter conexão de análises (lazy loading)
+const getAnalisesConnection = () => {
+  if (!analisesConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    analisesConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ANALISES_DB_NAME,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+  }
+  return analisesConnection;
+};
 
 // Schema para status dos módulos (documento com _id: "status")
 const moduleStatusSchema = new mongoose.Schema({
@@ -110,12 +126,38 @@ moduleStatusSchema.index({ updatedAt: -1 });
 faqSchema.index({ totalPerguntas: 1 });
 faqSchema.index({ updatedAt: -1 });
 
-// Criar modelos
-const ModuleStatus = configConnection.model('ModuleStatus', moduleStatusSchema, 'module_status');
-const FAQ = analisesConnection.model('FAQ', faqSchema, 'faq_bot');
+// Modelos - criados com lazy loading
+let ModuleStatusModel = null;
+let FAQModel = null;
 
-// Exportar ambos os modelos
+const getModuleStatusModel = () => {
+  if (!ModuleStatusModel) {
+    const connection = getConfigConnection();
+    ModuleStatusModel = connection.model('ModuleStatus', moduleStatusSchema, 'module_status');
+  }
+  return ModuleStatusModel;
+};
+
+const getFAQModel = () => {
+  if (!FAQModel) {
+    const connection = getAnalisesConnection();
+    FAQModel = connection.model('FAQ', faqSchema, 'faq_bot');
+  }
+  return FAQModel;
+};
+
+// Exportar ambos os modelos com Proxy para lazy loading
 module.exports = {
-  ModuleStatus,
-  FAQ
+  ModuleStatus: new Proxy({}, {
+    get: (target, prop) => {
+      const model = getModuleStatusModel();
+      return model[prop];
+    }
+  }),
+  FAQ: new Proxy({}, {
+    get: (target, prop) => {
+      const model = getFAQModel();
+      return model[prop];
+    }
+  })
 };

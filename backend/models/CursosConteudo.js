@@ -1,20 +1,26 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para o database academy_registros
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const ACADEMY_REGISTROS_DB_NAME = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+let academyConnection = null;
 
-// Criar conexão específica para o database academy_registros
-const academyConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ACADEMY_REGISTROS_DB_NAME,
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// Função para obter conexão (lazy loading)
+const getAcademyConnection = () => {
+  if (!academyConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    academyConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ACADEMY_REGISTROS_DB_NAME,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+  }
+  return academyConnection;
+};
 
 // Schema para lessonContent (array de objetos com url)
 const lessonContentSchema = new mongoose.Schema({
@@ -371,5 +377,21 @@ cursosConteudoSchema.statics.deleteCurso = async function(id) {
   }
 };
 
-module.exports = academyConnection.model('CursosConteudo', cursosConteudoSchema, 'cursos_conteudo');
+// Modelo - criado com lazy loading
+let CursosConteudoModel = null;
+
+const getModel = () => {
+  if (!CursosConteudoModel) {
+    const connection = getAcademyConnection();
+    CursosConteudoModel = connection.model('CursosConteudo', cursosConteudoSchema, 'cursos_conteudo');
+  }
+  return CursosConteudoModel;
+};
+
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});
 

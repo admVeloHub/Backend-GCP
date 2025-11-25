@@ -1,18 +1,24 @@
-// VERSION: v1.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para console_analises
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
+let analisesConnection = null;
 
-// Criar conexão específica para análises
-const analisesConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ANALISES_DB_NAME
-});
+// Função para obter conexão (lazy loading)
+const getAnalisesConnection = () => {
+  if (!analisesConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    analisesConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ANALISES_DB_NAME
+    });
+  }
+  return analisesConnection;
+};
 
 // Schema para critérios GPT
 const criteriosGPTSchema = new mongoose.Schema({
@@ -118,4 +124,20 @@ qualidadeAvaliacaoGPTSchema.index({ pontuacaoGPT: 1 });
 qualidadeAvaliacaoGPTSchema.index({ confianca: 1 });
 qualidadeAvaliacaoGPTSchema.index({ createdAt: -1 });
 
-module.exports = analisesConnection.model('QualidadeAvaliacaoGPT', qualidadeAvaliacaoGPTSchema, 'qualidade_avaliacoes_gpt');
+// Modelo - criado com lazy loading
+let QualidadeAvaliacaoGPTModel = null;
+
+const getModel = () => {
+  if (!QualidadeAvaliacaoGPTModel) {
+    const connection = getAnalisesConnection();
+    QualidadeAvaliacaoGPTModel = connection.model('QualidadeAvaliacaoGPT', qualidadeAvaliacaoGPTSchema, 'qualidade_avaliacoes_gpt');
+  }
+  return QualidadeAvaliacaoGPTModel;
+};
+
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});

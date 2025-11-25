@@ -1,20 +1,28 @@
-// VERSION: v1.12.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.13.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para o database console_config
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const CONFIG_DB_NAME = process.env.CONSOLE_CONFIG_DB || 'console_config';
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+let configConnection = null;
 
-// Criar conexão específica para o database de configuração
-const configConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: CONFIG_DB_NAME,
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// Função para obter conexão (lazy loading)
+const getConfigConnection = () => {
+  if (!configConnection) {
+    // MONGODB_URI deve ser configurada via variável de ambiente (secrets)
+    // Validação feita apenas quando a conexão é realmente necessária
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    configConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: CONFIG_DB_NAME,
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+  }
+  return configConnection;
+};
 
 const userSchema = new mongoose.Schema({
   _userMail: {
@@ -75,4 +83,20 @@ userSchema.index({ _userMail: 1 });
 userSchema.index({ _userId: 1 });
 userSchema.index({ _userRole: 1 });
 
-module.exports = configConnection.model('Users', userSchema, 'users');
+// Modelo - criado com lazy loading
+let UsersModel = null;
+
+const getModel = () => {
+  if (!UsersModel) {
+    const connection = getConfigConnection();
+    UsersModel = connection.model('Users', userSchema, 'users');
+  }
+  return UsersModel;
+};
+
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});

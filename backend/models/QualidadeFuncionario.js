@@ -1,18 +1,24 @@
-// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para console_analises
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
+let analisesConnection = null;
 
-// Criar conexão específica para análises
-const analisesConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ANALISES_DB_NAME
-});
+// Função para obter conexão (lazy loading)
+const getAnalisesConnection = () => {
+  if (!analisesConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    analisesConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ANALISES_DB_NAME
+    });
+  }
+  return analisesConnection;
+};
 
 // Schema para acessos dos funcionários
 const acessoSchema = new mongoose.Schema({
@@ -124,28 +130,42 @@ qualidadeFuncionarioSchema.index({ empresa: 1 });
 qualidadeFuncionarioSchema.index({ desligado: 1, afastado: 1 });
 qualidadeFuncionarioSchema.index({ createdAt: -1 });
 
-const QualidadeFuncionario = analisesConnection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
+// Modelo - criado com lazy loading
+let QualidadeFuncionarioModel = null;
 
-// Método estático para obter funcionários ativos (não desligados e não afastados)
-QualidadeFuncionario.getActiveFuncionarios = async function() {
-  try {
-    const funcionarios = await this.find({
-      desligado: { $ne: true },
-      afastado: { $ne: true }
-    }).select('colaboradorNome').lean();
+const getModel = () => {
+  if (!QualidadeFuncionarioModel) {
+    const connection = getAnalisesConnection();
+    QualidadeFuncionarioModel = connection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
     
-    return {
-      success: true,
-      data: funcionarios,
-      count: funcionarios.length
-    };
-  } catch (error) {
-    console.error('Erro ao obter funcionários ativos:', error);
-    return {
-      success: false,
-      error: 'Erro interno do servidor'
+    // Método estático para obter funcionários ativos (não desligados e não afastados)
+    QualidadeFuncionarioModel.getActiveFuncionarios = async function() {
+      try {
+        const funcionarios = await this.find({
+          desligado: { $ne: true },
+          afastado: { $ne: true }
+        }).select('colaboradorNome').lean();
+        
+        return {
+          success: true,
+          data: funcionarios,
+          count: funcionarios.length
+        };
+      } catch (error) {
+        console.error('Erro ao obter funcionários ativos:', error);
+        return {
+          success: false,
+          error: 'Erro interno do servidor'
+        };
+      }
     };
   }
+  return QualidadeFuncionarioModel;
 };
 
-module.exports = QualidadeFuncionario;
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});

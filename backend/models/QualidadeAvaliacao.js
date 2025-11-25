@@ -1,18 +1,24 @@
-// VERSION: v1.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 // Configurar conexão específica para console_analises
-// MONGODB_URI deve ser configurada via variável de ambiente (secrets)
-if (!process.env.MONGODB_URI) {
-  throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
-}
-const MONGODB_URI = process.env.MONGODB_URI;
+// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
+let analisesConnection = null;
 
-// Criar conexão específica para análises
-const analisesConnection = mongoose.createConnection(MONGODB_URI, {
-  dbName: ANALISES_DB_NAME
-});
+// Função para obter conexão (lazy loading)
+const getAnalisesConnection = () => {
+  if (!analisesConnection) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    if (!MONGODB_URI) {
+      throw new Error('❌ MONGODB_URI não configurada. Configure a variável de ambiente MONGODB_URI.');
+    }
+    analisesConnection = mongoose.createConnection(MONGODB_URI, {
+      dbName: ANALISES_DB_NAME
+    });
+  }
+  return analisesConnection;
+};
 
 // Schema principal para qualidade_avaliacoes
 const qualidadeAvaliacaoSchema = new mongoose.Schema({
@@ -112,4 +118,20 @@ qualidadeAvaliacaoSchema.index({ avaliador: 1 });
 qualidadeAvaliacaoSchema.index({ mes: 1, ano: 1 });
 qualidadeAvaliacaoSchema.index({ createdAt: -1 });
 
-module.exports = analisesConnection.model('QualidadeAvaliacao', qualidadeAvaliacaoSchema, 'qualidade_avaliacoes');
+// Modelo - criado com lazy loading
+let QualidadeAvaliacaoModel = null;
+
+const getModel = () => {
+  if (!QualidadeAvaliacaoModel) {
+    const connection = getAnalisesConnection();
+    QualidadeAvaliacaoModel = connection.model('QualidadeAvaliacao', qualidadeAvaliacaoSchema, 'qualidade_avaliacoes');
+  }
+  return QualidadeAvaliacaoModel;
+};
+
+module.exports = new Proxy({}, {
+  get: (target, prop) => {
+    const model = getModel();
+    return model[prop];
+  }
+});
