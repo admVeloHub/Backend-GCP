@@ -5,9 +5,7 @@ const { getMongoUri } = require('../config/mongodb');
 // Configurar conexões específicas para os databases
 // Lazy loading: conexões criadas apenas quando os modelos são usados pela primeira vez
 const CONFIG_DB_NAME = process.env.CONSOLE_CONFIG_DB || 'console_config';
-const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
 let configConnection = null;
-let analisesConnection = null;
 
 // Função para obter conexão de configuração (lazy loading)
 const getConfigConnection = () => {
@@ -22,18 +20,8 @@ const getConfigConnection = () => {
   return configConnection;
 };
 
-// Função para obter conexão de análises (lazy loading)
-const getAnalisesConnection = () => {
-  if (!analisesConnection) {
-    const MONGODB_URI = getMongoUri();
-    analisesConnection = mongoose.createConnection(MONGODB_URI, {
-      dbName: ANALISES_DB_NAME,
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-  }
-  return analisesConnection;
-};
+// ✅ USAR CONEXÃO COMPARTILHADA para console_analises
+const { getAnalisesConnection } = require('../config/analisesConnection');
 
 // Schema para status dos módulos (documento com _id: "status")
 const moduleStatusSchema = new mongoose.Schema({

@@ -1,24 +1,7 @@
-// VERSION: v1.5.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
-const { getMongoUri } = require('../config/mongodb');
-
-// Configurar conexão específica para console_analises
-// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
-const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
-let analisesConnection = null;
-
-// Função para obter conexão (lazy loading)
-const getAnalisesConnection = () => {
-  if (!analisesConnection) {
-    // MONGO_ENV deve ser configurada via variável de ambiente (secrets)
-    // Validação feita apenas quando a conexão é realmente necessária
-    const MONGODB_URI = getMongoUri();
-    analisesConnection = mongoose.createConnection(MONGODB_URI, {
-      dbName: ANALISES_DB_NAME
-    });
-  }
-  return analisesConnection;
-};
+// ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
+const { getAnalisesConnection } = require('../config/analisesConnection');
 
 // Schema para critérios de qualidade
 const criteriosQualidadeSchema = new mongoose.Schema({

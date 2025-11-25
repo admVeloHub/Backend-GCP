@@ -1,45 +1,7 @@
-// VERSION: v1.5.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
-const { getMongoUri } = require('../config/mongodb');
-
-// Configurar conexão específica para console_analises
-// Lazy loading: conexão criada apenas quando o modelo é usado pela primeira vez
-const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
-let analisesConnection = null;
-
-// Função para obter conexão (lazy loading)
-const getAnalisesConnection = () => {
-  if (!analisesConnection) {
-    try {
-      const MONGODB_URI = getMongoUri();
-      if (!MONGODB_URI) {
-        throw new Error('MONGO_ENV não configurada');
-      }
-      
-      analisesConnection = mongoose.createConnection(MONGODB_URI, {
-        dbName: ANALISES_DB_NAME,
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 45000,
-      });
-
-      analisesConnection.on('connected', () => {
-        console.log('✅ Conexão MongoDB (QualidadeAtuacoes) estabelecida');
-      });
-
-      analisesConnection.on('error', (error) => {
-        console.error('❌ Erro na conexão MongoDB (QualidadeAtuacoes):', error);
-      });
-
-      analisesConnection.on('disconnected', () => {
-        console.warn('⚠️ Conexão MongoDB (QualidadeAtuacoes) desconectada');
-      });
-    } catch (error) {
-      console.error('❌ Erro ao criar conexão MongoDB (QualidadeAtuacoes):', error);
-      throw error;
-    }
-  }
-  return analisesConnection;
-};
+// ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
+const { getAnalisesConnection } = require('../config/analisesConnection');
 
 // Schema para qualidade_atuacoes
 const qualidadeAtuacoesSchema = new mongoose.Schema({
