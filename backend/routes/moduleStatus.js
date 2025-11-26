@@ -1,4 +1,4 @@
-// VERSION: v2.8.3 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v2.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const { ModuleStatus } = require('../models/ModuleStatus');
@@ -35,7 +35,8 @@ router.get('/', async (req, res) => {
       'antecipacao': statusDoc._antecipacao,
       'pagamento-antecipado': statusDoc._pgtoAntecip,
       'modulo-irpf': statusDoc._irpf,
-      'modulo-seguro': statusDoc._seguro
+      'seguro-prestamista': statusDoc._seguroCred,
+      'seguro-celular': statusDoc._seguroCel
     };
     
     const result = {
@@ -103,8 +104,8 @@ router.post('/', async (req, res) => {
     }
     
     // Detectar formato dos dados recebidos primeiro
-    const schemaFields = ['_trabalhador', '_pessoal', '_antecipacao', '_pgtoAntecip', '_irpf', '_seguro'];
-    const frontendKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'modulo-seguro'];
+    const schemaFields = ['_trabalhador', '_pessoal', '_antecipacao', '_pgtoAntecip', '_irpf', '_seguroCred', '_seguroCel'];
+    const frontendKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
     
     const hasSchemaFields = schemaFields.some(field => req.body.hasOwnProperty(field));
     const hasFrontendKeys = frontendKeys.some(key => req.body.hasOwnProperty(key));
@@ -154,7 +155,7 @@ router.post('/', async (req, res) => {
         if (Object.keys(updateData).length === 0) {
           return res.status(400).json({
             success: false,
-            error: 'Nenhum campo válido do schema encontrado. Campos válidos: _trabalhador, _pessoal, _antecipacao, _pgtoAntecip, _irpf, _seguro'
+            error: 'Nenhum campo válido do schema encontrado. Campos válidos: _trabalhador, _pessoal, _antecipacao, _pgtoAntecip, _irpf, _seguroCred, _seguroCel'
           });
         }
         
@@ -201,7 +202,8 @@ router.post('/', async (req, res) => {
           'antecipacao': '_antecipacao',
           'pagamento-antecipado': '_pgtoAntecip',
           'modulo-irpf': '_irpf',
-          'modulo-seguro': '_seguro'
+          'seguro-prestamista': '_seguroCred',
+          'seguro-celular': '_seguroCel'
         };
         
         const updateData = {};
@@ -226,7 +228,7 @@ router.post('/', async (req, res) => {
         if (Object.keys(updateData).length === 0) {
           return res.status(400).json({
             success: false,
-            error: 'Nenhuma chave válida do frontend encontrada. Chaves válidas: credito-trabalhador, credito-pessoal, antecipacao, pagamento-antecipado, modulo-irpf, modulo-seguro'
+            error: 'Nenhuma chave válida do frontend encontrada. Chaves válidas: credito-trabalhador, credito-pessoal, antecipacao, pagamento-antecipado, modulo-irpf, seguro-prestamista, seguro-celular'
           });
         }
         
@@ -269,7 +271,7 @@ router.post('/', async (req, res) => {
           });
         }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'modulo-seguro'];
+      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
       const validStatuses = ['on', 'off', 'revisao'];
       
       if (!validKeys.includes(moduleKey)) {
@@ -293,7 +295,8 @@ router.post('/', async (req, res) => {
         'antecipacao': '_antecipacao',
         'pagamento-antecipado': '_pgtoAntecip',
         'modulo-irpf': '_irpf',
-        'modulo-seguro': '_seguro'
+        'seguro-prestamista': '_seguroCred',
+        'seguro-celular': '_seguroCel'
       };
       
       const fieldName = fieldMapping[moduleKey];
@@ -390,7 +393,7 @@ router.put('/', async (req, res) => {
         });
       }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'modulo-seguro'];
+      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
       const validStatuses = ['on', 'off', 'revisao'];
       
       // Mapear moduleKey para campo do schema
@@ -400,7 +403,8 @@ router.put('/', async (req, res) => {
         'antecipacao': '_antecipacao',
         'pagamento-antecipado': '_pgtoAntecip',
         'modulo-irpf': '_irpf',
-        'modulo-seguro': '_seguro'
+        'seguro-prestamista': '_seguroCred',
+        'seguro-celular': '_seguroCel'
       };
       
       // Validar todos os dados antes de fazer qualquer atualização

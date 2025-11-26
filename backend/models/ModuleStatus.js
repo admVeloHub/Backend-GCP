@@ -1,4 +1,4 @@
-// VERSION: v2.8.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v2.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -59,7 +59,13 @@ const moduleStatusSchema = new mongoose.Schema({
     default: 'on',
     enum: ['on', 'off', 'revisao']
   },
-  _seguro: {
+  _seguroCred: {
+    type: String,
+    required: true,
+    default: 'on',
+    enum: ['on', 'off', 'revisao']
+  },
+  _seguroCel: {
     type: String,
     required: true,
     default: 'on',
@@ -102,7 +108,8 @@ moduleStatusSchema.index({ _pessoal: 1 });
 moduleStatusSchema.index({ _antecipacao: 1 });
 moduleStatusSchema.index({ _pgtoAntecip: 1 });
 moduleStatusSchema.index({ _irpf: 1 });
-moduleStatusSchema.index({ _seguro: 1 });
+moduleStatusSchema.index({ _seguroCred: 1 });
+moduleStatusSchema.index({ _seguroCel: 1 });
 moduleStatusSchema.index({ updatedAt: -1 });
 
 // Índices para otimização do schema FAQ

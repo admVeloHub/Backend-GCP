@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-11-26 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const BotFeedback = require('../models/BotFeedback');
@@ -134,7 +134,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { colaboradorNome, action, messageId, sessionId, source, details } = req.body;
+    const { colaboradorNome, action, messageId, sessionId, source, resolvido, details } = req.body;
     
     global.emitTraffic('Bot Feedback', 'received', `Entrada recebida - PUT /api/bot-feedback/${id}`);
     global.emitLog('info', `PUT /api/bot-feedback/${id} - Atualizando feedback`);
@@ -146,6 +146,7 @@ router.put('/:id', async (req, res) => {
     if (messageId !== undefined) updateData.messageId = messageId;
     if (sessionId !== undefined) updateData.sessionId = sessionId;
     if (source !== undefined) updateData.source = source;
+    if (resolvido !== undefined) updateData.resolvido = resolvido;
     if (details !== undefined) updateData.details = details;
 
     global.emitTraffic('Bot Feedback', 'processing', 'Transmitindo para DB');

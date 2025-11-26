@@ -1,4 +1,4 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2025-11-26 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 
 const botFeedbackSchema = new mongoose.Schema({
@@ -25,6 +25,11 @@ const botFeedbackSchema = new mongoose.Schema({
   source: {
     type: String,
     required: true,
+    index: true
+  },
+  resolvido: {
+    type: Boolean,
+    default: false,
     index: true
   },
   details: {
@@ -285,6 +290,7 @@ botFeedbackSchema.statics.create = async function(feedbackData) {
       messageId: feedbackData.messageId,
       sessionId: feedbackData.sessionId || null,
       source: feedbackData.source,
+      resolvido: feedbackData.resolvido || false,
       details: {
         feedbackType: feedbackData.details?.feedbackType,
         comment: feedbackData.details?.comment || '',
@@ -325,6 +331,7 @@ botFeedbackSchema.statics.update = async function(id, updateData) {
     if (updateData.messageId !== undefined) feedback.messageId = updateData.messageId;
     if (updateData.sessionId !== undefined) feedback.sessionId = updateData.sessionId;
     if (updateData.source !== undefined) feedback.source = updateData.source;
+    if (updateData.resolvido !== undefined) feedback.resolvido = updateData.resolvido;
     
     if (updateData.details !== undefined) {
       if (updateData.details.feedbackType !== undefined) feedback.details.feedbackType = updateData.details.feedbackType;
