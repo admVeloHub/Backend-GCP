@@ -331,20 +331,42 @@ router.get('/dados-uso-operacao', async (req, res) => {
     ]);
     
     // Função auxiliar para obter chave do período baseado na exibição
+    // CORRIGIDO: Usar timezone do Brasil (America/Sao_Paulo) para evitar problemas de conversão UTC
     const obterChavePeriodo = (data, exibicao) => {
       const date = new Date(data);
+      
+      // Converter para timezone do Brasil usando Intl.DateTimeFormat
+      // Isso garante que a data seja extraída no horário local do Brasil
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      
+      const partesBRT = formatter.formatToParts(date);
+      const anoBRT = partesBRT.find(p => p.type === 'year').value;
+      const mesBRT = partesBRT.find(p => p.type === 'month').value;
+      const diaBRT = partesBRT.find(p => p.type === 'day').value;
+      
       switch (exibicao) {
         case 'dia':
-          return date.toISOString().split('T')[0]; // YYYY-MM-DD
+          return `${anoBRT}-${mesBRT}-${diaBRT}`; // YYYY-MM-DD no timezone BRT
         case 'semana':
-          // Calcular início da semana (domingo)
-          const inicioSemana = new Date(date);
-          inicioSemana.setDate(date.getDate() - date.getDay());
-          return inicioSemana.toISOString().split('T')[0];
+          // Calcular início da semana (domingo) no timezone do Brasil
+          // Criar data em BRT para calcular o domingo
+          const dataBRT = new Date(`${anoBRT}-${mesBRT}-${diaBRT}T12:00:00-03:00`);
+          const inicioSemana = new Date(dataBRT);
+          inicioSemana.setDate(dataBRT.getDate() - dataBRT.getDay());
+          const partesSemana = formatter.formatToParts(inicioSemana);
+          const anoSemana = partesSemana.find(p => p.type === 'year').value;
+          const mesSemana = partesSemana.find(p => p.type === 'month').value;
+          const diaSemana = partesSemana.find(p => p.type === 'day').value;
+          return `${anoSemana}-${mesSemana}-${diaSemana}`;
         case 'mes':
-          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+          return `${anoBRT}-${mesBRT}`; // YYYY-MM no timezone BRT
         default:
-          return date.toISOString().split('T')[0];
+          return `${anoBRT}-${mesBRT}-${diaBRT}`;
       }
     };
     
