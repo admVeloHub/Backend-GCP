@@ -1,4 +1,5 @@
-// VERSION: v5.5.1 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v5.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v5.6.0 - Deprecados endpoints POST/PUT/DELETE de qualidade_avaliacoes_gpt. Retornam erro 410 com mensagem de migração para audio_analise_results.
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -1119,131 +1120,48 @@ router.get('/avaliacoes-gpt/avaliacao/:avaliacao_id', async (req, res) => {
 });
 
 // POST /api/qualidade/avaliacoes-gpt - Criar nova avaliação GPT
+// DEPRECATED: Este endpoint está deprecado. Análises GPT são criadas automaticamente via Worker em audio_analise_results
 router.post('/avaliacoes-gpt', validateAvaliacaoGPT, async (req, res) => {
-  try {
-    global.emitTraffic('Qualidade Avaliações GPT', 'received', 'Entrada recebida - POST /api/qualidade/avaliacoes-gpt');
-    global.emitLog('info', 'POST /api/qualidade/avaliacoes-gpt - Criando nova avaliação GPT');
-    global.emitJson(req.body);
-    
-    const avaliacaoGPTData = { ...req.body };
-    
-    // Verificar se já existe uma avaliação GPT para este avaliacao_id
-    const avaliacaoExistente = await QualidadeAvaliacaoGPT.findOne({ 
-      avaliacao_id: avaliacaoGPTData.avaliacao_id 
-    });
-    
-    if (avaliacaoExistente) {
-      global.emitTraffic('Qualidade Avaliações GPT', 'error', 'Avaliação GPT já existe para esta avaliação');
-      global.emitLog('error', 'POST /api/qualidade/avaliacoes-gpt - Avaliação GPT já existe');
-      return res.status(409).json({
-        success: false,
-        message: 'Já existe uma avaliação GPT para esta avaliação'
-      });
-    }
-    
-    global.emitTraffic('Qualidade Avaliações GPT', 'processing', 'Transmitindo para DB');
-    const novaAvaliacaoGPT = new QualidadeAvaliacaoGPT(avaliacaoGPTData);
-    const avaliacaoGPTSalva = await novaAvaliacaoGPT.save();
-    
-    global.emitTraffic('Qualidade Avaliações GPT', 'completed', 'Concluído - Avaliação GPT criada com sucesso');
-    global.emitLog('success', `POST /api/qualidade/avaliacoes-gpt - Avaliação GPT para ID "${avaliacaoGPTSalva.avaliacao_id}" criada com sucesso`);
-    global.emitJson(avaliacaoGPTSalva);
-    
-    res.status(201).json({
-      success: true,
-      data: avaliacaoGPTSalva,
-      message: 'Avaliação GPT criada com sucesso'
-    });
-  } catch (error) {
-    global.emitTraffic('Qualidade Avaliações GPT', 'error', 'Erro ao criar avaliação GPT');
-    global.emitLog('error', `POST /api/qualidade/avaliacoes-gpt - Erro: ${error.message}`);
-    console.error('[QUALIDADE-AVALIACOES-GPT] Erro ao criar avaliação GPT:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor ao criar avaliação GPT'
-    });
-  }
+  global.emitTraffic('Qualidade Avaliações GPT', 'deprecated', 'Endpoint deprecado - POST /api/qualidade/avaliacoes-gpt');
+  global.emitLog('warn', 'POST /api/qualidade/avaliacoes-gpt - Endpoint deprecado. Use audio_analise_results.');
+  
+  return res.status(410).json({
+    success: false,
+    message: 'Este endpoint foi deprecado. Os dados de análise GPT agora estão em audio_analise_results.',
+    deprecated: true,
+    alternative: '/api/audio-analise/result/:id',
+    migration: 'Análises GPT são criadas automaticamente via Worker quando um áudio é processado. Use GET /api/audio-analise/result/:avaliacaoId para buscar análises GPT.'
+  });
 });
 
 // PUT /api/qualidade/avaliacoes-gpt/:id - Atualizar avaliação GPT existente
+// DEPRECATED: Este endpoint está deprecado. Atualizações devem ser feitas em audio_analise_results.gptAnalysis
 router.put('/avaliacoes-gpt/:id', validateAvaliacaoGPT, async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`[QUALIDADE-AVALIACOES-GPT] ${new Date().toISOString()} - PUT /avaliacoes-gpt/${id} - PROCESSING`);
-    console.log(`[QUALIDADE-AVALIACOES-GPT] Request body:`, JSON.stringify(req.body, null, 2));
-    
-    // Verificar se avaliação GPT existe
-    const avaliacaoGPTExistente = await QualidadeAvaliacaoGPT.findById(id);
-    if (!avaliacaoGPTExistente) {
-      return res.status(404).json({
-        success: false,
-        message: 'Avaliação GPT não encontrada'
-      });
-    }
-    
-    // Verificar se o avaliacao_id está sendo alterado e se já existe outro registro com esse ID
-    const updateData = { ...req.body };
-    if (updateData.avaliacao_id && updateData.avaliacao_id.toString() !== avaliacaoGPTExistente.avaliacao_id.toString()) {
-      const avaliacaoComMesmoId = await QualidadeAvaliacaoGPT.findOne({ 
-        avaliacao_id: updateData.avaliacao_id,
-        _id: { $ne: id }
-      });
-      
-      if (avaliacaoComMesmoId) {
-        return res.status(409).json({
-          success: false,
-          message: 'Já existe uma avaliação GPT para este avaliacao_id'
-        });
-      }
-    }
-    
-    const avaliacaoGPTAtualizada = await QualidadeAvaliacaoGPT.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-    
-    res.json({
-      success: true,
-      data: avaliacaoGPTAtualizada,
-      message: 'Avaliação GPT atualizada com sucesso'
-    });
-  } catch (error) {
-    console.error('[QUALIDADE-AVALIACOES-GPT] Erro ao atualizar avaliação GPT:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor ao atualizar avaliação GPT'
-    });
-  }
+  global.emitTraffic('Qualidade Avaliações GPT', 'deprecated', 'Endpoint deprecado - PUT /api/qualidade/avaliacoes-gpt/:id');
+  global.emitLog('warn', `PUT /api/qualidade/avaliacoes-gpt/${req.params.id} - Endpoint deprecado. Use PUT /api/audio-analise/:id/editar-analise.`);
+  
+  return res.status(410).json({
+    success: false,
+    message: 'Este endpoint foi deprecado. Atualizações de análise GPT devem ser feitas em audio_analise_results.',
+    deprecated: true,
+    alternative: '/api/audio-analise/:id/editar-analise',
+    migration: 'Use PUT /api/audio-analise/:analiseId/editar-analise para atualizar o campo analysis em audio_analise_results.gptAnalysis ou audio_analise_results.qualityAnalysis'
+  });
 });
 
 // DELETE /api/qualidade/avaliacoes-gpt/:id - Deletar avaliação GPT
+// DEPRECATED: Este endpoint está deprecado. Dados estão em audio_analise_results
 router.delete('/avaliacoes-gpt/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`[QUALIDADE-AVALIACOES-GPT] ${new Date().toISOString()} - DELETE /avaliacoes-gpt/${id} - PROCESSING`);
-    
-    const avaliacaoGPTDeletada = await QualidadeAvaliacaoGPT.findByIdAndDelete(id);
-    
-    if (!avaliacaoGPTDeletada) {
-      return res.status(404).json({
-        success: false,
-        message: 'Avaliação GPT não encontrada'
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: avaliacaoGPTDeletada,
-      message: 'Avaliação GPT deletada com sucesso'
-    });
-  } catch (error) {
-    console.error('[QUALIDADE-AVALIACOES-GPT] Erro ao deletar avaliação GPT:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor ao deletar avaliação GPT'
-    });
-  }
+  global.emitTraffic('Qualidade Avaliações GPT', 'deprecated', 'Endpoint deprecado - DELETE /api/qualidade/avaliacoes-gpt/:id');
+  global.emitLog('warn', `DELETE /api/qualidade/avaliacoes-gpt/${req.params.id} - Endpoint deprecado. Dados estão em audio_analise_results.`);
+  
+  return res.status(410).json({
+    success: false,
+    message: 'Este endpoint foi deprecado. Dados de análise GPT estão em audio_analise_results.',
+    deprecated: true,
+    alternative: 'Dados não devem ser deletados. Se necessário, atualize o campo analysis em audio_analise_results.',
+    migration: 'Dados de análise GPT estão em audio_analise_results e não devem ser deletados diretamente.'
+  });
 });
 
 // ========================================

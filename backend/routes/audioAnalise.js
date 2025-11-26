@@ -315,10 +315,12 @@ router.get('/result/:id', async (req, res) => {
     const { id } = req.params;
 
     // Buscar resultado da análise usando avaliacaoMonitorId
+    // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
     const result = await AudioAnaliseResult.findOne({ avaliacaoMonitorId: id })
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
         strictPopulate: false
       });
 
@@ -439,11 +441,12 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
     }
 
     // Buscar todas as análises com populate do avaliacaoMonitorId
+    // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
     const results = await AudioAnaliseResult.find({})
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
         strictPopulate: false
       })
       .sort({ createdAt: -1 });
@@ -563,11 +566,12 @@ router.get('/listar', async (req, res) => {
     }
 
     // Buscar todas as análises com populate do avaliacaoMonitorId
+    // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
     const results = await AudioAnaliseResult.find({})
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
         strictPopulate: false
       })
       .sort({ createdAt: -1 })
