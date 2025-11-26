@@ -330,6 +330,24 @@ router.get('/dados-uso-operacao', async (req, res) => {
       }).lean()
     ]);
     
+    // Função auxiliar para obter chave do período baseado na exibição
+    const obterChavePeriodo = (data, exibicao) => {
+      const date = new Date(data);
+      switch (exibicao) {
+        case 'dia':
+          return date.toISOString().split('T')[0]; // YYYY-MM-DD
+        case 'semana':
+          // Calcular início da semana (domingo)
+          const inicioSemana = new Date(date);
+          inicioSemana.setDate(date.getDate() - date.getDay());
+          return inicioSemana.toISOString().split('T')[0];
+        case 'mes':
+          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+        default:
+          return date.toISOString().split('T')[0];
+      }
+    };
+    
     // Agrupar por período
     const totalUso = {};
     const feedbacksPositivos = {};
@@ -337,17 +355,17 @@ router.get('/dados-uso-operacao', async (req, res) => {
     
     // Processar user activities
     userActivities.forEach(activity => {
-      const date = new Date(activity.createdAt).toISOString().split('T')[0];
-      totalUso[date] = (totalUso[date] || 0) + 1;
+      const chave = obterChavePeriodo(activity.createdAt, exibicao);
+      totalUso[chave] = (totalUso[chave] || 0) + 1;
     });
     
     // Processar bot feedbacks
     botFeedbacks.forEach(feedback => {
-      const date = new Date(feedback.createdAt).toISOString().split('T')[0];
+      const chave = obterChavePeriodo(feedback.createdAt, exibicao);
       if (feedback.details?.feedbackType === 'positive') {
-        feedbacksPositivos[date] = (feedbacksPositivos[date] || 0) + 1;
+        feedbacksPositivos[chave] = (feedbacksPositivos[chave] || 0) + 1;
       } else if (feedback.details?.feedbackType === 'negative') {
-        feedbacksNegativos[date] = (feedbacksNegativos[date] || 0) + 1;
+        feedbacksNegativos[chave] = (feedbacksNegativos[chave] || 0) + 1;
       }
     });
     
@@ -367,6 +385,7 @@ router.get('/dados-uso-operacao', async (req, res) => {
     
   } catch (error) {
     global.emitTraffic('Bot Análises', 'error', 'Erro ao processar dados de uso');
+    console.error('Erro ao processar dados de uso:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'
