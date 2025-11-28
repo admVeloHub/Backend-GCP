@@ -1,4 +1,4 @@
-// VERSION: v2.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
@@ -51,18 +51,22 @@ router.post('/generate-upload-url', async (req, res) => {
       }
     }
 
-    // Verificar se já existe upload pendente para esta avaliação
+    // Verificar se já existe upload concluído e processamento em andamento
     if (avaliacaoId) {
       const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
       
+      // Permitir nova tentativa apenas se:
+      // - Não existe avaliação OU
+      // - audioSent é false (upload anterior falhou) OU
+      // - audioTreated é true (processamento já concluído)
       if (avaliacao && avaliacao.audioSent && !avaliacao.audioTreated) {
         if (global.emitTraffic) {
-          global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload pendente para esta avaliação');
+          global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload concluído pendente de processamento para esta avaliação');
         }
         
         return res.status(400).json({
           success: false,
-          error: 'Já existe um upload pendente para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
+          error: 'Já existe um upload concluído pendente de processamento para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
         });
       }
     }
@@ -70,7 +74,7 @@ router.post('/generate-upload-url', async (req, res) => {
     // Gerar Signed URL
     const uploadData = await generateUploadSignedUrl(nomeArquivo, mimeType);
 
-    // Atualizar QualidadeAvaliacao diretamente com campos de status de áudio
+    // Atualizar QualidadeAvaliacao com informações do upload (SEM marcar audioSent ainda)
     if (avaliacaoId) {
       const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
       
@@ -85,9 +89,10 @@ router.post('/generate-upload-url', async (req, res) => {
         });
       }
       
-      // Atualizar campos de status de áudio
+      // Salvar nome do arquivo e resetar status (permite retentativas)
+      // audioSent será marcado como true apenas após confirmação de upload bem-sucedido
       avaliacao.nomeArquivoAudio = uploadData.fileName;
-      avaliacao.audioSent = true;
+      avaliacao.audioSent = false; // Não marcar como enviado ainda
       avaliacao.audioTreated = false;
       avaliacao.audioCreatedAt = new Date();
       avaliacao.audioUpdatedAt = new Date();
@@ -356,6 +361,92 @@ router.get('/result/:id', async (req, res) => {
     
     if (global.emitTraffic) {
       global.emitTraffic(`GET /api/audio-analise/result/${req.params.id}`, 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/audio-analise/confirm-upload - Confirmar upload bem-sucedido
+// Chamado pelo frontend após upload concluído com sucesso
+router.post('/confirm-upload', async (req, res) => {
+  try {
+    const { avaliacaoId, fileName } = req.body;
+
+    if (!avaliacaoId) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/confirm-upload', 'ERROR', 'avaliacaoId é obrigatório');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'avaliacaoId é obrigatório'
+      });
+    }
+
+    const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
+
+    if (!avaliacao) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/confirm-upload', 'ERROR', 'Avaliação não encontrada');
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Avaliação não encontrada'
+      });
+    }
+
+    // Validar que o fileName corresponde (se fornecido)
+    if (fileName && avaliacao.nomeArquivoAudio !== fileName) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/confirm-upload', 'ERROR', 'Nome do arquivo não corresponde');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Nome do arquivo não corresponde ao esperado'
+      });
+    }
+
+    // Marcar audioSent como true apenas agora, após confirmação de upload bem-sucedido
+    avaliacao.audioSent = true;
+    avaliacao.audioUpdatedAt = new Date();
+    await avaliacao.save();
+
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/confirm-upload', 'SUCCESS', `Upload confirmado para avaliacaoId: ${avaliacaoId}`);
+    }
+
+    if (global.emitJson) {
+      global.emitJson({
+        tipo: 'OUTBOUND',
+        origem: 'Audio Analise',
+        dados: {
+          avaliacaoId: avaliacao._id,
+          nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+          audioSent: true
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Upload confirmado com sucesso',
+      data: {
+        avaliacaoId: avaliacao._id,
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+        audioSent: true
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao confirmar upload:', error);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/confirm-upload', 'ERROR', error.message);
     }
     
     res.status(500).json({
