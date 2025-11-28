@@ -1,10 +1,10 @@
-// VERSION: v2.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
-const { generateUploadSignedUrl, validateFileType, validateFileSize } = require('../config/gcs');
+const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS } = require('../config/gcs');
 
 // POST /api/audio-analise/generate-upload-url - Gera Signed URL do GCS e cria registro com sent=true, treated=false
 router.post('/generate-upload-url', async (req, res) => {
@@ -864,6 +864,65 @@ router.put('/:id/editar-analise', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor ao editar análise',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// POST /api/audio-analise/configure-cors - Configurar CORS no bucket do GCS
+router.post('/configure-cors', async (req, res) => {
+  try {
+    const { allowedOrigins } = req.body;
+    
+    const corsConfig = await configureBucketCORS(allowedOrigins);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/configure-cors', 'SUCCESS', 'CORS configurado com sucesso');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Configuração CORS aplicada com sucesso',
+      corsConfig
+    });
+  } catch (error) {
+    console.error('Erro ao configurar CORS:', error);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/configure-cors', 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao configurar CORS no bucket',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// GET /api/audio-analise/cors-config - Obter configuração CORS atual
+router.get('/cors-config', async (req, res) => {
+  try {
+    const corsConfig = await getBucketCORS();
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('GET /api/audio-analise/cors-config', 'SUCCESS', 'Configuração CORS obtida');
+    }
+    
+    res.json({
+      success: true,
+      corsConfig
+    });
+  } catch (error) {
+    console.error('Erro ao obter configuração CORS:', error);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('GET /api/audio-analise/cors-config', 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao obter configuração CORS',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

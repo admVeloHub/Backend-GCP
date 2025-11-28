@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
@@ -213,6 +213,73 @@ const getFileMetadata = async (fileName) => {
   }
 };
 
+/**
+ * Configurar CORS no bucket do GCS
+ * Necessário para permitir uploads diretos do frontend
+ * @param {Array<string>} allowedOrigins - Lista de origens permitidas (opcional)
+ * @returns {Promise<void>}
+ */
+const configureBucketCORS = async (allowedOrigins = null) => {
+  try {
+    const bucket = getBucket();
+    
+    // Origens padrão se não fornecidas
+    // NOTA: GCS não suporta wildcards como "*.run.app" diretamente
+    // É necessário listar origens específicas ou usar "*" para todas
+    const origins = allowedOrigins || [
+      'https://console-v2-hfsqj6konq-ue.a.run.app',
+      'https://console-v2-278491073220.us-east1.run.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080'
+    ];
+    
+    // Configuração CORS
+    const corsConfig = [
+      {
+        origin: origins,
+        method: ['PUT', 'OPTIONS', 'GET', 'POST', 'HEAD'],
+        responseHeader: [
+          'Content-Type',
+          'x-goog-resumable',
+          'x-goog-content-length-range',
+          'Access-Control-Allow-Origin',
+          'Access-Control-Allow-Methods',
+          'Access-Control-Allow-Headers',
+          'Access-Control-Max-Age'
+        ],
+        maxAgeSeconds: 3600
+      }
+    ];
+    
+    // Aplicar configuração CORS ao bucket
+    await bucket.setCorsConfiguration(corsConfig);
+    
+    console.log('✅ Configuração CORS aplicada ao bucket:', GCS_BUCKET_NAME);
+    console.log('📋 Origens permitidas:', origins);
+    
+    return corsConfig;
+  } catch (error) {
+    console.error('❌ Erro ao configurar CORS no bucket:', error);
+    throw error;
+  }
+};
+
+/**
+ * Verificar configuração CORS atual do bucket
+ * @returns {Promise<Array>}
+ */
+const getBucketCORS = async () => {
+  try {
+    const bucket = getBucket();
+    const [metadata] = await bucket.getMetadata();
+    return metadata.cors || [];
+  } catch (error) {
+    console.error('❌ Erro ao obter configuração CORS:', error);
+    return [];
+  }
+};
+
 module.exports = {
   initializeGCS,
   getBucket,
@@ -220,6 +287,8 @@ module.exports = {
   validateFileSize,
   generateUploadSignedUrl,
   configureBucketNotification,
+  configureBucketCORS,
+  getBucketCORS,
   fileExists,
   getFileMetadata,
   ALLOWED_FILE_TYPES,
