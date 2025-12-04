@@ -1,4 +1,4 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
@@ -9,8 +9,8 @@ const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
 let storage;
 let bucket;
 
-// Tipos de arquivo permitidos
-const ALLOWED_FILE_TYPES = [
+// Tipos de arquivo permitidos para áudio
+const ALLOWED_AUDIO_TYPES = [
   'audio/mpeg',
   'audio/mp3',
   'audio/wav',
@@ -22,11 +22,35 @@ const ALLOWED_FILE_TYPES = [
   'audio/ogg'
 ];
 
-// Extensões permitidas
-const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.mp4', '.webm', '.ogg'];
+// Tipos de arquivo permitidos para imagens
+const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'image/webp'
+];
 
-// Tamanho máximo do arquivo (50MB em bytes)
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+// Tipos de arquivo permitidos (compatibilidade com código existente)
+const ALLOWED_FILE_TYPES = [...ALLOWED_AUDIO_TYPES, ...ALLOWED_IMAGE_TYPES];
+
+// Extensões permitidas para áudio
+const ALLOWED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.mp4', '.webm', '.ogg'];
+
+// Extensões permitidas para imagens
+const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+// Extensões permitidas (compatibilidade com código existente)
+const ALLOWED_EXTENSIONS = [...ALLOWED_AUDIO_EXTENSIONS, ...ALLOWED_IMAGE_EXTENSIONS];
+
+// Tamanho máximo do arquivo de áudio (50MB em bytes)
+const MAX_AUDIO_SIZE = 50 * 1024 * 1024; // 50MB
+
+// Tamanho máximo do arquivo de imagem (10MB em bytes)
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Tamanho máximo do arquivo (compatibilidade - usa o maior)
+const MAX_FILE_SIZE = MAX_AUDIO_SIZE;
 
 /**
  * Inicializar cliente do Google Cloud Storage
@@ -73,23 +97,26 @@ const getBucket = () => {
 };
 
 /**
- * Validar tipo de arquivo
+ * Validar tipo de arquivo (áudio ou imagem)
  */
-const validateFileType = (mimeType, fileName) => {
+const validateFileType = (mimeType, fileName, fileType = 'audio') => {
+  const allowedTypes = fileType === 'image' ? ALLOWED_IMAGE_TYPES : ALLOWED_AUDIO_TYPES;
+  const allowedExtensions = fileType === 'image' ? ALLOWED_IMAGE_EXTENSIONS : ALLOWED_AUDIO_EXTENSIONS;
+  
   // Validar por MIME type
-  if (mimeType && !ALLOWED_FILE_TYPES.includes(mimeType)) {
+  if (mimeType && !allowedTypes.includes(mimeType)) {
     return {
       valid: false,
-      error: `Tipo de arquivo não permitido: ${mimeType}. Tipos permitidos: ${ALLOWED_FILE_TYPES.join(', ')}`
+      error: `Tipo de arquivo não permitido: ${mimeType}. Tipos permitidos: ${allowedTypes.join(', ')}`
     };
   }
 
   // Validar por extensão
   const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-  if (!ALLOWED_EXTENSIONS.includes(extension)) {
+  if (!allowedExtensions.includes(extension)) {
     return {
       valid: false,
-      error: `Extensão de arquivo não permitida: ${extension}. Extensões permitidas: ${ALLOWED_EXTENSIONS.join(', ')}`
+      error: `Extensão de arquivo não permitida: ${extension}. Extensões permitidas: ${allowedExtensions.join(', ')}`
     };
   }
 
@@ -99,11 +126,13 @@ const validateFileType = (mimeType, fileName) => {
 /**
  * Validar tamanho do arquivo
  */
-const validateFileSize = (fileSize) => {
-  if (fileSize > MAX_FILE_SIZE) {
+const validateFileSize = (fileSize, fileType = 'audio') => {
+  const maxSize = fileType === 'image' ? MAX_IMAGE_SIZE : MAX_AUDIO_SIZE;
+  
+  if (fileSize > maxSize) {
     return {
       valid: false,
-      error: `Arquivo muito grande: ${(fileSize / 1024 / 1024).toFixed(2)}MB. Tamanho máximo permitido: ${MAX_FILE_SIZE / 1024 / 1024}MB`
+      error: `Arquivo muito grande: ${(fileSize / 1024 / 1024).toFixed(2)}MB. Tamanho máximo permitido: ${maxSize / 1024 / 1024}MB`
     };
   }
 
@@ -280,6 +309,63 @@ const getBucketCORS = async () => {
   }
 };
 
+/**
+ * Upload de imagem para GCS
+ * @param {Buffer} fileBuffer - Buffer do arquivo
+ * @param {string} fileName - Nome do arquivo
+ * @param {string} mimeType - Tipo MIME do arquivo
+ * @returns {Promise<{url: string, fileName: string}>}
+ */
+const uploadImage = async (fileBuffer, fileName, mimeType) => {
+  try {
+    // Validar tipo de arquivo
+    const typeValidation = validateFileType(mimeType, fileName, 'image');
+    if (!typeValidation.valid) {
+      throw new Error(typeValidation.error);
+    }
+
+    // Validar tamanho
+    const sizeValidation = validateFileSize(fileBuffer.length, 'image');
+    if (!sizeValidation.valid) {
+      throw new Error(sizeValidation.error);
+    }
+
+    const bucket = getBucket();
+    
+    // Gerar nome único para o arquivo
+    const timestamp = Date.now();
+    const uniqueFileName = `images/${timestamp}-${fileName}`;
+    
+    // Criar referência do arquivo
+    const file = bucket.file(uniqueFileName);
+
+    // Upload do arquivo
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType: mimeType,
+        cacheControl: 'public, max-age=31536000' // Cache por 1 ano
+      }
+    });
+
+    // Tornar arquivo público
+    await file.makePublic();
+
+    // Obter URL pública
+    const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${uniqueFileName}`;
+
+    console.log(`✅ Imagem uploadada com sucesso: ${uniqueFileName}`);
+
+    return {
+      url: publicUrl,
+      fileName: uniqueFileName,
+      bucket: GCS_BUCKET_NAME
+    };
+  } catch (error) {
+    console.error('❌ Erro ao fazer upload da imagem:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   initializeGCS,
   getBucket,
@@ -291,8 +377,15 @@ module.exports = {
   getBucketCORS,
   fileExists,
   getFileMetadata,
+  uploadImage,
   ALLOWED_FILE_TYPES,
+  ALLOWED_AUDIO_TYPES,
+  ALLOWED_IMAGE_TYPES,
   ALLOWED_EXTENSIONS,
-  MAX_FILE_SIZE
+  ALLOWED_AUDIO_EXTENSIONS,
+  ALLOWED_IMAGE_EXTENSIONS,
+  MAX_FILE_SIZE,
+  MAX_AUDIO_SIZE,
+  MAX_IMAGE_SIZE
 };
 

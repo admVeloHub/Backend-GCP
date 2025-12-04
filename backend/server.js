@@ -55,6 +55,7 @@ const mongodbInsertRoutes = require('./routes/mongodbInsert');
 const mongodbCertificadosRoutes = require('./routes/mongodbCertificados');
 const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
 const audioAnaliseRoutes = require('./routes/audioAnalise');
+const uploadsRoutes = require('./routes/uploads');
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -167,6 +168,7 @@ app.use('/api/mongodb', mongodbInsertRoutes);
 app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
 app.use('/api/audio-analise', audioAnaliseRoutes);
+app.use('/api/uploads', uploadsRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {
