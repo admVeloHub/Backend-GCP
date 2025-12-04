@@ -63,11 +63,16 @@ router.post('/image', upload.single('image'), async (req, res) => {
   } catch (error) {
     global.emitTraffic('Uploads', 'error', 'Erro no upload');
     global.emitLog('error', `POST /api/uploads/image - Erro: ${error.message}`);
+    console.error('❌ Erro detalhado no upload de imagem:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     
     res.status(500).json({
       success: false,
       error: 'Erro ao fazer upload da imagem',
-      message: error.message
+      message: error.message || 'Erro desconhecido ao processar upload'
     });
   }
 });
