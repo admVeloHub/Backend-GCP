@@ -1,4 +1,4 @@
-// VERSION: v3.4.1 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const Velonews = require('../models/Velonews');
@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
     global.emitTraffic('Velonews', 'received', 'Entrada recebida - POST /api/velonews');
     global.emitLog('info', 'POST /api/velonews - Criando nova velonews');
     
-    const { titulo, conteudo, isCritical, solved } = req.body;
+    const { titulo, conteudo, isCritical, solved, media } = req.body;
     
     // Validação mais flexível
     if (!titulo || titulo.trim().length === 0) {
@@ -93,7 +93,8 @@ router.post('/', async (req, res) => {
       titulo,
       conteudo,
       isCritical: isCritical || false,
-      solved: solved || false
+      solved: solved || false,
+      media: media || { images: [], videos: [] } // Campo media com arrays vazios por padrão
     };
 
     // OUTBOUND: Schema sendo enviado para MongoDB
@@ -128,7 +129,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { titulo, conteudo, isCritical, solved } = req.body;
+    const { titulo, conteudo, isCritical, solved, media } = req.body;
     
     global.emitTraffic('Velonews', 'received', `Entrada recebida - PUT /api/velonews/${id}`);
     global.emitLog('info', `PUT /api/velonews/${id} - Atualizando velonews`);
@@ -138,6 +139,7 @@ router.put('/:id', async (req, res) => {
     if (conteudo) updateData.conteudo = conteudo;
     if (isCritical !== undefined) updateData.isCritical = isCritical;
     if (solved !== undefined) updateData.solved = solved;
+    if (media !== undefined) updateData.media = media;
 
     // OUTBOUND: Dados de atualização para MongoDB
     global.emitJson({ id, ...updateData });

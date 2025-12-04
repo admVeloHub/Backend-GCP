@@ -1,4 +1,4 @@
-// VERSION: v3.3.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
 class Velonews {
@@ -21,6 +21,7 @@ class Velonews {
         conteudo: velonewsData.conteudo,
         isCritical: velonewsData.isCritical || false,
         solved: velonewsData.solved || false,
+        media: velonewsData.media || { images: [], videos: [] },
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -94,12 +95,15 @@ class Velonews {
       const { ObjectId } = require('mongodb');
       
       const updateDoc = {
-        titulo: updateData.titulo,
-        conteudo: updateData.conteudo,
-        isCritical: updateData.isCritical,
-        solved: updateData.solved,
         updatedAt: new Date()
       };
+      
+      // Incluir apenas campos que foram fornecidos
+      if (updateData.titulo !== undefined) updateDoc.titulo = updateData.titulo;
+      if (updateData.conteudo !== undefined) updateDoc.conteudo = updateData.conteudo;
+      if (updateData.isCritical !== undefined) updateDoc.isCritical = updateData.isCritical;
+      if (updateData.solved !== undefined) updateDoc.solved = updateData.solved;
+      if (updateData.media !== undefined) updateDoc.media = updateData.media;
 
       const result = await collection.updateOne(
         { _id: new ObjectId(id) },
