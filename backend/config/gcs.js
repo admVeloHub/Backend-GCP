@@ -341,9 +341,11 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
     }
     
     // Gerar nome único para o arquivo
+    // O bucket já é mediabank_velohub, então o caminho é apenas a pasta dentro do bucket
     const timestamp = Date.now();
-    const uniqueFileName = `mediabank_velohub/img_velonews/${timestamp}-${fileName}`;
+    const uniqueFileName = `img_velonews/${timestamp}-${fileName}`;
     console.log(`📁 Caminho do arquivo: ${uniqueFileName}`);
+    console.log(`🪣 Bucket: ${GCS_BUCKET_NAME}`);
     
     // Criar referência do arquivo
     const file = bucket.file(uniqueFileName);
