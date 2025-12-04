@@ -1,4 +1,4 @@
-// VERSION: v1.3.1 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.2 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
@@ -431,10 +431,10 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
     });
     console.log('✅ Arquivo salvo no GCS');
 
-    // Tornar arquivo público
-    console.log('🔓 Tornando arquivo público...');
-    await file.makePublic();
-    console.log('✅ Arquivo tornado público');
+    // NOTA: Não usar file.makePublic() quando Uniform Bucket-Level Access está habilitado
+    // As permissões são gerenciadas no nível do bucket via IAM
+    // O bucket já deve ter permissões públicas configuradas via IAM
+    console.log('ℹ️ Uniform Bucket-Level Access habilitado - permissões gerenciadas via IAM do bucket');
 
     // Obter URL pública usando GCS_BUCKET_NAME_IMAGES
     const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME_IMAGES}/${uniqueFileName}`;
