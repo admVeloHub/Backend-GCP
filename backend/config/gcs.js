@@ -1,9 +1,9 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.1 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
-const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
+const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME2;
 
 // Inicializar cliente do GCS
 let storage;
@@ -58,7 +58,7 @@ const MAX_FILE_SIZE = MAX_AUDIO_SIZE;
 const initializeGCS = () => {
   try {
     if (!GCP_PROJECT_ID || !GCS_BUCKET_NAME) {
-      throw new Error('GCP_PROJECT_ID e GCS_BUCKET_NAME devem estar configurados nas variáveis de ambiente');
+      throw new Error('GCP_PROJECT_ID e GCS_BUCKET_NAME2 devem estar configurados nas variáveis de ambiente');
     }
 
     // Inicializar Storage
