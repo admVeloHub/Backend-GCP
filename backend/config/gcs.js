@@ -318,42 +318,55 @@ const getBucketCORS = async () => {
  */
 const uploadImage = async (fileBuffer, fileName, mimeType) => {
   try {
+    console.log(`📤 Iniciando upload de imagem: ${fileName} (${mimeType}, ${fileBuffer.length} bytes)`);
+    
     // Validar tipo de arquivo
     const typeValidation = validateFileType(mimeType, fileName, 'image');
     if (!typeValidation.valid) {
+      console.error('❌ Validação de tipo falhou:', typeValidation.error);
       throw new Error(typeValidation.error);
     }
 
     // Validar tamanho
     const sizeValidation = validateFileSize(fileBuffer.length, 'image');
     if (!sizeValidation.valid) {
+      console.error('❌ Validação de tamanho falhou:', sizeValidation.error);
       throw new Error(sizeValidation.error);
     }
 
+    // Garantir que GCS está inicializado e obter bucket
     const bucket = getBucket();
+    if (!bucket) {
+      throw new Error('Bucket do GCS não está disponível. Verifique as configurações.');
+    }
     
     // Gerar nome único para o arquivo
     const timestamp = Date.now();
-    const uniqueFileName = `images/${timestamp}-${fileName}`;
+    const uniqueFileName = `mediabank_velohub/img_velonews/${timestamp}-${fileName}`;
+    console.log(`📁 Caminho do arquivo: ${uniqueFileName}`);
     
     // Criar referência do arquivo
     const file = bucket.file(uniqueFileName);
 
     // Upload do arquivo
+    console.log('⬆️ Fazendo upload para GCS...');
     await file.save(fileBuffer, {
       metadata: {
         contentType: mimeType,
         cacheControl: 'public, max-age=31536000' // Cache por 1 ano
       }
     });
+    console.log('✅ Arquivo salvo no GCS');
 
     // Tornar arquivo público
+    console.log('🔓 Tornando arquivo público...');
     await file.makePublic();
+    console.log('✅ Arquivo tornado público');
 
     // Obter URL pública
     const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${uniqueFileName}`;
-
     console.log(`✅ Imagem uploadada com sucesso: ${uniqueFileName}`);
+    console.log(`🔗 URL pública: ${publicUrl}`);
 
     return {
       url: publicUrl,
@@ -362,6 +375,7 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
     };
   } catch (error) {
     console.error('❌ Erro ao fazer upload da imagem:', error);
+    console.error('❌ Stack trace:', error.stack);
     throw error;
   }
 };
