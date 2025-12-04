@@ -1,13 +1,24 @@
-// VERSION: v1.2.1 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.1 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
-const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME2;
+const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME; // Para outras funções (áudio, etc)
+const GCS_BUCKET_NAME_IMAGES = process.env.GCS_BUCKET_NAME2; // EXCLUSIVO para imagens
+
+// LOG CRÍTICO: Verificar valores das variáveis de ambiente ao carregar o módulo
+console.log('🔍 [GCS CONFIG] Verificando variáveis de ambiente:');
+console.log(`   GCP_PROJECT_ID: ${GCP_PROJECT_ID ? '✅ DEFINIDO' : '❌ NÃO DEFINIDO'}`);
+console.log(`   GCS_BUCKET_NAME (outras funções): ${GCS_BUCKET_NAME ? `✅ DEFINIDO = "${GCS_BUCKET_NAME}"` : '❌ NÃO DEFINIDO'}`);
+console.log(`   GCS_BUCKET_NAME2 (imagens): ${GCS_BUCKET_NAME_IMAGES ? `✅ DEFINIDO = "${GCS_BUCKET_NAME_IMAGES}"` : '❌ NÃO DEFINIDO'}`);
+if (!GCS_BUCKET_NAME_IMAGES) {
+  console.error('🚨 ERRO CRÍTICO: GCS_BUCKET_NAME2 não está definido! Upload de imagens NÃO funcionará!');
+}
 
 // Inicializar cliente do GCS
 let storage;
-let bucket;
+let bucket; // Bucket padrão (para outras funções)
+let bucketImages; // Bucket EXCLUSIVO para imagens
 
 // Tipos de arquivo permitidos para áudio
 const ALLOWED_AUDIO_TYPES = [
@@ -58,7 +69,7 @@ const MAX_FILE_SIZE = MAX_AUDIO_SIZE;
 const initializeGCS = () => {
   try {
     if (!GCP_PROJECT_ID || !GCS_BUCKET_NAME) {
-      throw new Error('GCP_PROJECT_ID e GCS_BUCKET_NAME2 devem estar configurados nas variáveis de ambiente');
+      throw new Error('GCP_PROJECT_ID e GCS_BUCKET_NAME devem estar configurados nas variáveis de ambiente');
     }
 
     // Inicializar Storage
@@ -87,13 +98,58 @@ const initializeGCS = () => {
 };
 
 /**
- * Obter instância do bucket
+ * Obter instância do bucket (para outras funções - áudio, etc)
  */
 const getBucket = () => {
   if (!bucket) {
     initializeGCS();
   }
   return bucket;
+};
+
+/**
+ * Obter instância do bucket de IMAGENS (exclusivo)
+ */
+const getBucketImages = () => {
+  // Validar se variável está configurada
+  console.log(`🔍 [getBucketImages] Verificando GCS_BUCKET_NAME_IMAGES: ${GCS_BUCKET_NAME_IMAGES ? `"${GCS_BUCKET_NAME_IMAGES}"` : 'UNDEFINED'}`);
+  if (!GCS_BUCKET_NAME_IMAGES) {
+    console.error('❌ [getBucketImages] GCS_BUCKET_NAME2 não está configurado nas variáveis de ambiente');
+    console.error('❌ [getBucketImages] process.env.GCS_BUCKET_NAME2 =', process.env.GCS_BUCKET_NAME2);
+    throw new Error('GCS_BUCKET_NAME2 não está configurado nas variáveis de ambiente');
+  }
+  
+  // Garantir que storage está inicializado
+  if (!storage) {
+    if (!GCP_PROJECT_ID) {
+      throw new Error('GCP_PROJECT_ID não está configurado nas variáveis de ambiente');
+    }
+    
+    // Inicializar Storage
+    if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
+      const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+      storage = new Storage({
+        projectId: GCP_PROJECT_ID,
+        credentials: credentials
+      });
+    } else {
+      storage = new Storage({
+        projectId: GCP_PROJECT_ID
+        // ADC será usado automaticamente
+      });
+    }
+  }
+  
+  // Criar/obter bucket de imagens se ainda não existe
+  if (!bucketImages) {
+    console.log(`🔍 [getBucketImages] Criando bucket com nome: "${GCS_BUCKET_NAME_IMAGES}"`);
+    bucketImages = storage.bucket(GCS_BUCKET_NAME_IMAGES);
+    console.log(`✅ [getBucketImages] Bucket de imagens inicializado: "${GCS_BUCKET_NAME_IMAGES}"`);
+  } else {
+    console.log(`✅ [getBucketImages] Bucket de imagens já existe: "${GCS_BUCKET_NAME_IMAGES}"`);
+  }
+  
+  return bucketImages;
 };
 
 /**
@@ -320,6 +376,17 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
   try {
     console.log(`📤 Iniciando upload de imagem: ${fileName} (${mimeType}, ${fileBuffer.length} bytes)`);
     
+    // Validar se variável está configurada
+    console.log(`🔍 [uploadImage] Verificando GCS_BUCKET_NAME_IMAGES: ${GCS_BUCKET_NAME_IMAGES ? `"${GCS_BUCKET_NAME_IMAGES}"` : 'UNDEFINED'}`);
+    console.log(`🔍 [uploadImage] process.env.GCS_BUCKET_NAME2 = "${process.env.GCS_BUCKET_NAME2 || 'UNDEFINED'}"`);
+    if (!GCS_BUCKET_NAME_IMAGES) {
+      console.error('❌ [uploadImage] GCS_BUCKET_NAME_IMAGES não está definido');
+      console.error('❌ [uploadImage] process.env.GCS_BUCKET_NAME2 =', process.env.GCS_BUCKET_NAME2);
+      throw new Error('GCS_BUCKET_NAME2 não está configurado nas variáveis de ambiente');
+    }
+    
+    console.log(`✅ [uploadImage] Variável GCS_BUCKET_NAME_IMAGES está definida: "${GCS_BUCKET_NAME_IMAGES}"`);
+    
     // Validar tipo de arquivo
     const typeValidation = validateFileType(mimeType, fileName, 'image');
     if (!typeValidation.valid) {
@@ -334,21 +401,25 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
       throw new Error(sizeValidation.error);
     }
 
-    // Garantir que GCS está inicializado e obter bucket
-    const bucket = getBucket();
+    // Obter bucket EXCLUSIVO para imagens
+    console.log('🔍 Tentando obter bucket de imagens...');
+    const bucket = getBucketImages();
     if (!bucket) {
-      throw new Error('Bucket do GCS não está disponível. Verifique as configurações.');
+      console.error('❌ Bucket de imagens retornado é null/undefined');
+      throw new Error('Bucket de imagens do GCS não está disponível. Verifique GCS_BUCKET_NAME2.');
     }
+    console.log('✅ Bucket de imagens obtido com sucesso');
     
     // Gerar nome único para o arquivo
-    // O bucket já é mediabank_velohub, então o caminho é apenas a pasta dentro do bucket
     const timestamp = Date.now();
     const uniqueFileName = `img_velonews/${timestamp}-${fileName}`;
     console.log(`📁 Caminho do arquivo: ${uniqueFileName}`);
-    console.log(`🪣 Bucket: ${GCS_BUCKET_NAME}`);
-    
+    console.log(`🪣 Bucket de Imagens: ${GCS_BUCKET_NAME_IMAGES}`);
+
     // Criar referência do arquivo
+    console.log('🔍 Criando referência do arquivo...');
     const file = bucket.file(uniqueFileName);
+    console.log('✅ Referência do arquivo criada');
 
     // Upload do arquivo
     console.log('⬆️ Fazendo upload para GCS...');
@@ -365,19 +436,21 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
     await file.makePublic();
     console.log('✅ Arquivo tornado público');
 
-    // Obter URL pública
-    const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${uniqueFileName}`;
+    // Obter URL pública usando GCS_BUCKET_NAME_IMAGES
+    const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME_IMAGES}/${uniqueFileName}`;
     console.log(`✅ Imagem uploadada com sucesso: ${uniqueFileName}`);
     console.log(`🔗 URL pública: ${publicUrl}`);
 
     return {
       url: publicUrl,
       fileName: uniqueFileName,
-      bucket: GCS_BUCKET_NAME
+      bucket: GCS_BUCKET_NAME_IMAGES
     };
   } catch (error) {
     console.error('❌ Erro ao fazer upload da imagem:', error);
+    console.error('❌ Mensagem:', error.message);
     console.error('❌ Stack trace:', error.stack);
+    console.error('❌ Nome do erro:', error.name);
     throw error;
   }
 };
