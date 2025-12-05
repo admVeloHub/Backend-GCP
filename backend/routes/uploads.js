@@ -1,8 +1,8 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { uploadImage } = require('../config/gcs');
+const { uploadImage, generateImageUploadSignedUrl, validateFileType, validateFileSize } = require('../config/gcs');
 
 // Configurar multer para upload de arquivos em memória
 const upload = multer({
@@ -73,6 +73,93 @@ router.post('/image', upload.single('image'), async (req, res) => {
       success: false,
       error: 'Erro ao fazer upload da imagem',
       message: error.message || 'Erro desconhecido ao processar upload'
+    });
+  }
+});
+
+// POST /api/uploads/generate-upload-url - Gerar Signed URL para upload direto de imagem
+router.post('/generate-upload-url', async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'Entrada recebida - POST /api/uploads/generate-upload-url');
+    global.emitLog('info', 'POST /api/uploads/generate-upload-url - Gerando Signed URL para imagem');
+
+    const { fileName, mimeType, fileSize } = req.body;
+
+    // Validações obrigatórias
+    if (!fileName || !mimeType) {
+      global.emitTraffic('Uploads', 'error', 'Nome do arquivo e tipo MIME são obrigatórios');
+      global.emitLog('error', 'POST /api/uploads/generate-upload-url - Nome do arquivo e tipo MIME são obrigatórios');
+      return res.status(400).json({
+        success: false,
+        error: 'Nome do arquivo e tipo MIME são obrigatórios'
+      });
+    }
+
+    // Validar tipo de arquivo
+    const typeValidation = validateFileType(mimeType, fileName, 'image');
+    if (!typeValidation.valid) {
+      global.emitTraffic('Uploads', 'error', typeValidation.error);
+      global.emitLog('error', `POST /api/uploads/generate-upload-url - ${typeValidation.error}`);
+      return res.status(400).json({
+        success: false,
+        error: typeValidation.error
+      });
+    }
+
+    // Validar tamanho do arquivo (se fornecido)
+    if (fileSize) {
+      const sizeValidation = validateFileSize(fileSize, 'image');
+      if (!sizeValidation.valid) {
+        global.emitTraffic('Uploads', 'error', sizeValidation.error);
+        global.emitLog('error', `POST /api/uploads/generate-upload-url - ${sizeValidation.error}`);
+        return res.status(400).json({
+          success: false,
+          error: sizeValidation.error
+        });
+      }
+    }
+
+    // Gerar Signed URL
+    const uploadData = await generateImageUploadSignedUrl(fileName, mimeType);
+
+    global.emitTraffic('Uploads', 'completed', 'Signed URL gerada com sucesso');
+    global.emitLog('success', `POST /api/uploads/generate-upload-url - Signed URL gerada para ${uploadData.fileName}`);
+    
+    if (global.emitJson) {
+      global.emitJson({
+        tipo: 'OUTBOUND',
+        origem: 'Uploads',
+        dados: {
+          uploadUrl: uploadData.url,
+          fileName: uploadData.fileName,
+          bucket: uploadData.bucket,
+          expiresIn: uploadData.expiresIn
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        uploadUrl: uploadData.url,
+        fileName: uploadData.fileName,
+        bucket: uploadData.bucket,
+        expiresIn: uploadData.expiresIn
+      }
+    });
+  } catch (error) {
+    global.emitTraffic('Uploads', 'error', 'Erro ao gerar Signed URL');
+    global.emitLog('error', `POST /api/uploads/generate-upload-url - Erro: ${error.message}`);
+    console.error('❌ Erro ao gerar Signed URL para imagem:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao gerar URL de upload',
+      message: error.message || 'Erro desconhecido ao gerar URL de upload'
     });
   }
 });

@@ -1,4 +1,4 @@
-// VERSION: v1.3.2 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 
 // Configuração do Google Cloud Storage
@@ -196,7 +196,7 @@ const validateFileSize = (fileSize, fileType = 'audio') => {
 };
 
 /**
- * Gerar Signed URL para upload direto
+ * Gerar Signed URL para upload direto (áudio)
  * @param {string} fileName - Nome do arquivo
  * @param {string} mimeType - Tipo MIME do arquivo
  * @param {number} expirationMinutes - Minutos até expiração (padrão: 15)
@@ -238,6 +238,62 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
     };
   } catch (error) {
     console.error('❌ Erro ao gerar Signed URL:', error);
+    throw error;
+  }
+};
+
+/**
+ * Gerar Signed URL para upload direto de imagens
+ * @param {string} fileName - Nome do arquivo
+ * @param {string} mimeType - Tipo MIME do arquivo
+ * @param {number} expirationMinutes - Minutos até expiração (padrão: 15)
+ * @returns {Promise<{url: string, fileName: string, bucket: string}>}
+ */
+const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 15) => {
+  try {
+    console.log(`🔍 [generateImageUploadSignedUrl] Gerando Signed URL para imagem: ${fileName}`);
+    
+    // Validar tipo de arquivo (imagem)
+    const typeValidation = validateFileType(mimeType, fileName, 'image');
+    if (!typeValidation.valid) {
+      console.error('❌ [generateImageUploadSignedUrl] Validação de tipo falhou:', typeValidation.error);
+      throw new Error(typeValidation.error);
+    }
+
+    // Obter bucket EXCLUSIVO para imagens
+    const bucket = getBucketImages();
+    if (!bucket) {
+      throw new Error('Bucket de imagens do GCS não está disponível. Verifique GCS_BUCKET_NAME2.');
+    }
+    
+    // Gerar nome único para o arquivo
+    const timestamp = Date.now();
+    const uniqueFileName = `img_velonews/${timestamp}-${fileName}`;
+    console.log(`📁 [generateImageUploadSignedUrl] Caminho do arquivo: ${uniqueFileName}`);
+    
+    // Criar referência do arquivo
+    const file = bucket.file(uniqueFileName);
+
+    // Opções para Signed URL
+    const options = {
+      version: 'v4',
+      action: 'write',
+      expires: Date.now() + expirationMinutes * 60 * 1000,
+      contentType: mimeType
+    };
+
+    // Gerar Signed URL
+    const [url] = await file.getSignedUrl(options);
+    console.log(`✅ [generateImageUploadSignedUrl] Signed URL gerada com sucesso`);
+
+    return {
+      url,
+      fileName: uniqueFileName,
+      bucket: GCS_BUCKET_NAME_IMAGES,
+      expiresIn: expirationMinutes * 60 // segundos
+    };
+  } catch (error) {
+    console.error('❌ Erro ao gerar Signed URL para imagem:', error);
     throw error;
   }
 };
@@ -351,6 +407,60 @@ const configureBucketCORS = async (allowedOrigins = null) => {
 };
 
 /**
+ * Configurar CORS no bucket de IMAGENS do GCS
+ * Necessário para permitir uploads diretos do frontend para imagens
+ * @param {Array<string>} allowedOrigins - Lista de origens permitidas (opcional)
+ * @returns {Promise<void>}
+ */
+const configureBucketImagesCORS = async (allowedOrigins = null) => {
+  try {
+    const bucket = getBucketImages();
+    
+    if (!bucket) {
+      throw new Error('Bucket de imagens não está disponível. Verifique GCS_BUCKET_NAME2.');
+    }
+    
+    // Origens padrão se não fornecidas
+    const origins = allowedOrigins || [
+      'https://console-v2-hfsqj6konq-ue.a.run.app',
+      'https://console-v2-278491073220.us-east1.run.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080'
+    ];
+    
+    // Configuração CORS
+    const corsConfig = [
+      {
+        origin: origins,
+        method: ['PUT', 'OPTIONS', 'GET', 'POST', 'HEAD'],
+        responseHeader: [
+          'Content-Type',
+          'x-goog-resumable',
+          'x-goog-content-length-range',
+          'Access-Control-Allow-Origin',
+          'Access-Control-Allow-Methods',
+          'Access-Control-Allow-Headers',
+          'Access-Control-Max-Age'
+        ],
+        maxAgeSeconds: 3600
+      }
+    ];
+    
+    // Aplicar configuração CORS ao bucket de imagens
+    await bucket.setCorsConfiguration(corsConfig);
+    
+    console.log('✅ Configuração CORS aplicada ao bucket de imagens:', GCS_BUCKET_NAME_IMAGES);
+    console.log('📋 Origens permitidas:', origins);
+    
+    return corsConfig;
+  } catch (error) {
+    console.error('❌ Erro ao configurar CORS no bucket de imagens:', error);
+    throw error;
+  }
+};
+
+/**
  * Verificar configuração CORS atual do bucket
  * @returns {Promise<Array>}
  */
@@ -458,11 +568,14 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
 module.exports = {
   initializeGCS,
   getBucket,
+  getBucketImages,
   validateFileType,
   validateFileSize,
   generateUploadSignedUrl,
+  generateImageUploadSignedUrl,
   configureBucketNotification,
   configureBucketCORS,
+  configureBucketImagesCORS,
   getBucketCORS,
   fileExists,
   getFileMetadata,
