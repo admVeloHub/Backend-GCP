@@ -1,7 +1,8 @@
-// VERSION: v3.3.1 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const BotPerguntas = require('../models/BotPerguntas');
+const { processContentImages } = require('../utils/contentProcessor');
 
 // GET /api/bot-perguntas - Listar todas as perguntas do bot
 router.get('/', async (req, res) => {
@@ -34,7 +35,7 @@ router.post('/', async (req, res) => {
     global.emitLog('info', 'POST /api/bot-perguntas - Criando nova pergunta do bot');
     global.emitJson(req.body);
     
-    const { pergunta, resposta, palavrasChave, sinonimos, tabulacao } = req.body;
+    const { pergunta, resposta, palavrasChave, sinonimos, tabulacao, media } = req.body;
     
     // Validar campos obrigatórios conforme schema MongoDB padrão
     if (!pergunta || !resposta || !palavrasChave) {
@@ -46,12 +47,26 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Processar conteúdo: substituir URLs blob temporárias por URLs do GCS
+    const imagePaths = media?.images || [];
+    let processedResposta = resposta;
+    
+    if (imagePaths.length > 0) {
+      console.log(`🔍 [POST /api/bot-perguntas] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+      console.log(`🔍 [POST /api/bot-perguntas] Resposta antes: ${resposta.substring(0, 200)}`);
+      
+      processedResposta = processContentImages(resposta, imagePaths);
+      
+      console.log(`🔍 [POST /api/bot-perguntas] Resposta depois: ${processedResposta.substring(0, 200)}`);
+    }
+
     const perguntaData = {
       pergunta,
-      resposta,
+      resposta: processedResposta, // Usar resposta processada com URLs do GCS
       palavrasChave,
       sinonimos: sinonimos || '',
-      tabulacao: tabulacao || ''
+      tabulacao: tabulacao || '',
+      media: media || { images: [], videos: [] } // Campo media com arrays vazios por padrão
     };
 
        // OUTBOUND: Schema sendo enviado para MongoDB
@@ -86,7 +101,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { pergunta, resposta, palavrasChave, sinonimos, tabulacao } = req.body;
+    const { pergunta, resposta, palavrasChave, sinonimos, tabulacao, media } = req.body;
     
     global.emitTraffic('Bot Perguntas', 'received', `Entrada recebida - PUT /api/bot-perguntas/${id}`);
     global.emitLog('info', `PUT /api/bot-perguntas/${id} - Atualizando pergunta do bot`);
@@ -94,10 +109,20 @@ router.put('/:id', async (req, res) => {
     
     const updateData = {};
     if (pergunta) updateData.pergunta = pergunta;
-    if (resposta) updateData.resposta = resposta;
+    if (resposta) {
+      // Processar conteúdo se houver imagens
+      const imagePaths = media?.images || [];
+      if (imagePaths.length > 0) {
+        console.log(`🔍 [PUT /api/bot-perguntas/${id}] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+        updateData.resposta = processContentImages(resposta, imagePaths);
+      } else {
+        updateData.resposta = resposta;
+      }
+    }
     if (palavrasChave) updateData.palavrasChave = palavrasChave;
     if (sinonimos !== undefined) updateData.sinonimos = sinonimos;
     if (tabulacao !== undefined) updateData.tabulacao = tabulacao;
+    if (media !== undefined) updateData.media = media;
 
     global.emitTraffic('Bot Perguntas', 'processing', 'Transmitindo para DB');
     const result = await BotPerguntas.update(id, updateData);

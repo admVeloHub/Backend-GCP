@@ -1,7 +1,8 @@
-// VERSION: v3.4.1 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const Artigos = require('../models/Artigos');
+const { processContentImages } = require('../utils/contentProcessor');
 
 // GET /api/artigos - Listar todos os artigos
 router.get('/', async (req, res) => {
@@ -68,7 +69,7 @@ router.post('/', async (req, res) => {
     global.emitTraffic('Artigos', 'received', 'Entrada recebida - POST /api/artigos');
     global.emitLog('info', 'POST /api/artigos - Criando novo artigo');
     
-    const { tag, artigo_titulo, artigo_conteudo, categoria_id, categoria_titulo } = req.body;
+    const { tag, artigo_titulo, artigo_conteudo, categoria_id, categoria_titulo, media } = req.body;
     
     if (!artigo_titulo || !artigo_conteudo || !categoria_titulo) {
       global.emitTraffic('Artigos', 'error', 'Dados obrigatórios ausentes');
@@ -79,12 +80,26 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Processar conteúdo: substituir URLs blob temporárias por URLs do GCS
+    const imagePaths = media?.images || [];
+    let processedConteudo = artigo_conteudo;
+    
+    if (imagePaths.length > 0) {
+      console.log(`🔍 [POST /api/artigos] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+      console.log(`🔍 [POST /api/artigos] Conteúdo antes: ${artigo_conteudo.substring(0, 200)}`);
+      
+      processedConteudo = processContentImages(artigo_conteudo, imagePaths);
+      
+      console.log(`🔍 [POST /api/artigos] Conteúdo depois: ${processedConteudo.substring(0, 200)}`);
+    }
+
     const artigoData = {
       tag: tag || '',
       artigo_titulo,
-      artigo_conteudo,
+      artigo_conteudo: processedConteudo, // Usar conteúdo processado com URLs do GCS
       categoria_id: categoria_id || '',
-      categoria_titulo
+      categoria_titulo,
+      media: media || { images: [], videos: [] } // Campo media com arrays vazios por padrão
     };
 
     // OUTBOUND: Schema sendo enviado para MongoDB
@@ -119,7 +134,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { tag, artigo_titulo, artigo_conteudo, categoria_id, categoria_titulo } = req.body;
+    const { tag, artigo_titulo, artigo_conteudo, categoria_id, categoria_titulo, media } = req.body;
     
     global.emitTraffic('Artigos', 'received', `Entrada recebida - PUT /api/artigos/${id}`);
     global.emitLog('info', `PUT /api/artigos/${id} - Atualizando artigo`);
@@ -128,9 +143,19 @@ router.put('/:id', async (req, res) => {
     const updateData = {};
     if (tag !== undefined) updateData.tag = tag;
     if (artigo_titulo) updateData.artigo_titulo = artigo_titulo;
-    if (artigo_conteudo) updateData.artigo_conteudo = artigo_conteudo;
+    if (artigo_conteudo) {
+      // Processar conteúdo se houver imagens
+      const imagePaths = media?.images || [];
+      if (imagePaths.length > 0) {
+        console.log(`🔍 [PUT /api/artigos/${id}] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+        updateData.artigo_conteudo = processContentImages(artigo_conteudo, imagePaths);
+      } else {
+        updateData.artigo_conteudo = artigo_conteudo;
+      }
+    }
     if (categoria_id !== undefined) updateData.categoria_id = categoria_id;
     if (categoria_titulo) updateData.categoria_titulo = categoria_titulo;
+    if (media !== undefined) updateData.media = media;
 
     global.emitTraffic('Artigos', 'processing', 'Transmitindo para DB');
     const result = await Artigos.update(id, updateData);

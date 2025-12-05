@@ -83,7 +83,7 @@ router.post('/generate-upload-url', async (req, res) => {
     global.emitTraffic('Uploads', 'received', 'Entrada recebida - POST /api/uploads/generate-upload-url');
     global.emitLog('info', 'POST /api/uploads/generate-upload-url - Gerando Signed URL para imagem');
 
-    const { fileName, mimeType, fileSize } = req.body;
+    const { fileName, mimeType, fileSize, folder } = req.body;
 
     // Validações obrigatórias
     if (!fileName || !mimeType) {
@@ -119,8 +119,8 @@ router.post('/generate-upload-url', async (req, res) => {
       }
     }
 
-    // Gerar Signed URL
-    const uploadData = await generateImageUploadSignedUrl(fileName, mimeType);
+    // Gerar Signed URL (usar folder fornecido ou padrão 'img_velonews')
+    const uploadData = await generateImageUploadSignedUrl(fileName, mimeType, 15, folder || 'img_velonews');
 
     global.emitTraffic('Uploads', 'completed', 'Signed URL gerada com sucesso');
     global.emitLog('success', `POST /api/uploads/generate-upload-url - Signed URL gerada para ${uploadData.fileName}`);

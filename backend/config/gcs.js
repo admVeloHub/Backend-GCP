@@ -247,9 +247,10 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
  * @param {string} fileName - Nome do arquivo
  * @param {string} mimeType - Tipo MIME do arquivo
  * @param {number} expirationMinutes - Minutos até expiração (padrão: 15)
+ * @param {string} folder - Pasta no GCS (padrão: 'img_velonews')
  * @returns {Promise<{url: string, fileName: string, bucket: string}>}
  */
-const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 15) => {
+const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 15, folder = 'img_velonews') => {
   try {
     console.log(`🔍 [generateImageUploadSignedUrl] Gerando Signed URL para imagem: ${fileName}`);
     
@@ -268,7 +269,7 @@ const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinute
     
     // Gerar nome único para o arquivo
     const timestamp = Date.now();
-    const uniqueFileName = `img_velonews/${timestamp}-${fileName}`;
+    const uniqueFileName = `${folder}/${timestamp}-${fileName}`;
     console.log(`📁 [generateImageUploadSignedUrl] Caminho do arquivo: ${uniqueFileName}`);
     
     // Criar referência do arquivo
@@ -480,9 +481,10 @@ const getBucketCORS = async () => {
  * @param {Buffer} fileBuffer - Buffer do arquivo
  * @param {string} fileName - Nome do arquivo
  * @param {string} mimeType - Tipo MIME do arquivo
+ * @param {string} folder - Pasta no GCS (padrão: 'img_velonews')
  * @returns {Promise<{url: string, fileName: string}>}
  */
-const uploadImage = async (fileBuffer, fileName, mimeType) => {
+const uploadImage = async (fileBuffer, fileName, mimeType, folder = 'img_velonews') => {
   try {
     console.log(`📤 Iniciando upload de imagem: ${fileName} (${mimeType}, ${fileBuffer.length} bytes)`);
     
@@ -522,7 +524,7 @@ const uploadImage = async (fileBuffer, fileName, mimeType) => {
     
     // Gerar nome único para o arquivo
     const timestamp = Date.now();
-    const uniqueFileName = `img_velonews/${timestamp}-${fileName}`;
+    const uniqueFileName = `${folder}/${timestamp}-${fileName}`;
     console.log(`📁 Caminho do arquivo: ${uniqueFileName}`);
     console.log(`🪣 Bucket de Imagens: ${GCS_BUCKET_NAME_IMAGES}`);
 

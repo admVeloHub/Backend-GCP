@@ -1,4 +1,4 @@
-// VERSION: v3.1.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
 class Artigos {
@@ -18,6 +18,7 @@ class Artigos {
       const collection = this.getCollection();
       const artigo = {
         ...artigoData,
+        media: artigoData.media || { images: [], videos: [] },
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -94,6 +95,11 @@ class Artigos {
         ...updateData,
         updatedAt: new Date()
       };
+      
+      // Incluir campo media se fornecido
+      if (updateData.media !== undefined) {
+        updateDoc.media = updateData.media;
+      }
 
       const result = await collection.updateOne(
         { _id: new ObjectId(id) },

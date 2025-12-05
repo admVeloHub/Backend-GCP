@@ -1,4 +1,4 @@
-// VERSION: v3.4.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
 class BotPerguntas {
@@ -22,6 +22,7 @@ class BotPerguntas {
         palavrasChave: perguntaData.palavrasChave,
         sinonimos: perguntaData.sinonimos || '',
         tabulacao: perguntaData.tabulacao || '',
+        media: perguntaData.media || { images: [], videos: [] },
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -104,6 +105,7 @@ class BotPerguntas {
       if (updateData.palavrasChave) updateDoc.palavrasChave = updateData.palavrasChave;
       if (updateData.sinonimos !== undefined) updateDoc.sinonimos = updateData.sinonimos;
       if (updateData.tabulacao !== undefined) updateDoc.tabulacao = updateData.tabulacao;
+      if (updateData.media !== undefined) updateDoc.media = updateData.media;
 
       const result = await collection.updateOne(
         { _id: new ObjectId(id) },

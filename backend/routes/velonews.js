@@ -1,7 +1,8 @@
-// VERSION: v3.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v3.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const Velonews = require('../models/Velonews');
+const { processContentImages } = require('../utils/contentProcessor');
 
 // GET /api/velonews - Listar todas as velonews
 router.get('/', async (req, res) => {
@@ -89,9 +90,22 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Processar conteúdo: substituir URLs blob temporárias por URLs do GCS
+    const imagePaths = media?.images || [];
+    let processedConteudo = conteudo;
+    
+    if (imagePaths.length > 0) {
+      console.log(`🔍 [POST /api/velonews] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+      console.log(`🔍 [POST /api/velonews] Conteúdo antes: ${conteudo.substring(0, 200)}`);
+      
+      processedConteudo = processContentImages(conteudo, imagePaths);
+      
+      console.log(`🔍 [POST /api/velonews] Conteúdo depois: ${processedConteudo.substring(0, 200)}`);
+    }
+
     const velonewsData = {
       titulo,
-      conteudo,
+      conteudo: processedConteudo, // Usar conteúdo processado com URLs do GCS
       isCritical: isCritical || false,
       solved: solved || false,
       media: media || { images: [], videos: [] } // Campo media com arrays vazios por padrão
@@ -136,7 +150,16 @@ router.put('/:id', async (req, res) => {
     
     const updateData = {};
     if (titulo) updateData.titulo = titulo;
-    if (conteudo) updateData.conteudo = conteudo;
+    if (conteudo) {
+      // Processar conteúdo se houver imagens
+      const imagePaths = media?.images || [];
+      if (imagePaths.length > 0) {
+        console.log(`🔍 [PUT /api/velonews/${id}] Processando ${imagePaths.length} imagem(ns) no conteúdo`);
+        updateData.conteudo = processContentImages(conteudo, imagePaths);
+      } else {
+        updateData.conteudo = conteudo;
+      }
+    }
     if (isCritical !== undefined) updateData.isCritical = isCritical;
     if (solved !== undefined) updateData.solved = solved;
     if (media !== undefined) updateData.media = media;
