@@ -1,10 +1,10 @@
-// VERSION: v2.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
-const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS } = require('../config/gcs');
+const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS, publishAudioToPubSub, fileExists } = require('../config/gcs');
 
 // POST /api/audio-analise/generate-upload-url - Gera Signed URL do GCS e cria registro com sent=true, treated=false
 router.post('/generate-upload-url', async (req, res) => {
@@ -510,6 +510,131 @@ router.post('/notify-completed', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/audio-analise/reenviar-pubsub/:avaliacaoId - Reenviar áudio para Pub/Sub
+router.post('/reenviar-pubsub/:avaliacaoId', async (req, res) => {
+  try {
+    const { avaliacaoId } = req.params;
+
+    if (!avaliacaoId) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'avaliacaoId é obrigatório');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'avaliacaoId é obrigatório'
+      });
+    }
+
+    // Buscar avaliação
+    const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
+
+    if (!avaliacao) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Avaliação não encontrada');
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Avaliação não encontrada'
+      });
+    }
+
+    // Verificar condições para reenvio
+    if (!avaliacao.audioSent) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Áudio ainda não foi enviado');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Áudio ainda não foi enviado. Não é possível reenviar.'
+      });
+    }
+
+    if (avaliacao.audioTreated) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Áudio já foi processado');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Áudio já foi processado. Não é necessário reenviar.'
+      });
+    }
+
+    if (!avaliacao.nomeArquivoAudio) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Nome do arquivo não encontrado');
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Nome do arquivo de áudio não encontrado na avaliação'
+      });
+    }
+
+    // Verificar se arquivo existe no GCS
+    const arquivoExiste = await fileExists(avaliacao.nomeArquivoAudio);
+    if (!arquivoExiste) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Arquivo não encontrado no GCS');
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Arquivo não encontrado no GCS. Não é possível reenviar.'
+      });
+    }
+
+    // Publicar mensagem no Pub/Sub
+    const messageId = await publishAudioToPubSub(avaliacao.nomeArquivoAudio);
+
+    // Atualizar timestamp de atualização
+    avaliacao.audioUpdatedAt = new Date();
+    await avaliacao.save();
+
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'SUCCESS', `Áudio reenviado para Pub/Sub. Message ID: ${messageId}`);
+    }
+
+    if (global.emitJson) {
+      global.emitJson({
+        tipo: 'OUTBOUND',
+        origem: 'Audio Analise - Reenvio Pub/Sub',
+        dados: {
+          avaliacaoId: avaliacao._id,
+          nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+          messageId: messageId,
+          audioUpdatedAt: avaliacao.audioUpdatedAt
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Áudio reenviado para processamento com sucesso',
+      data: {
+        avaliacaoId: avaliacao._id,
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+        messageId: messageId,
+        audioUpdatedAt: avaliacao.audioUpdatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao reenviar áudio para Pub/Sub:', error);
+    
+    if (global.emitTraffic) {
+      global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', error.message);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor ao reenviar áudio'
     });
   }
 });

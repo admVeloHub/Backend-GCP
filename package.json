@@ -18,6 +18,7 @@
   "author": "VeloHub Development Team",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/pubsub": "^3.4.0",
     "@google-cloud/storage": "^7.7.0",
     "axios": "^1.12.2",
     "cors": "^2.8.5",

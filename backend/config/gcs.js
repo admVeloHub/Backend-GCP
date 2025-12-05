@@ -1,5 +1,6 @@
-// VERSION: v1.5.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
+const { PubSub } = require('@google-cloud/pubsub');
 
 // Configuração do Google Cloud Storage
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
@@ -477,6 +478,56 @@ const getBucketCORS = async () => {
 };
 
 /**
+ * Publicar mensagem manualmente no Pub/Sub para reprocessar áudio
+ * @param {string} fileName - Nome do arquivo no bucket
+ * @param {string} bucketName - Nome do bucket (padrão: GCS_BUCKET_NAME)
+ * @returns {Promise<string>} - ID da mensagem publicada
+ */
+const publishAudioToPubSub = async (fileName, bucketName = null) => {
+  try {
+    if (!GCP_PROJECT_ID) {
+      throw new Error('GCP_PROJECT_ID deve estar configurado nas variáveis de ambiente');
+    }
+
+    const targetBucket = bucketName || GCS_BUCKET_NAME;
+    const topicName = process.env.PUBSUB_TOPIC_NAME || 'qualidade_audio_envio';
+
+    // Inicializar cliente Pub/Sub
+    const pubsub = new PubSub({ projectId: GCP_PROJECT_ID });
+    const topic = pubsub.topic(topicName);
+
+    // Verificar se o tópico existe
+    const [topicExists] = await topic.exists();
+    if (!topicExists) {
+      throw new Error(`Tópico Pub/Sub '${topicName}' não existe`);
+    }
+
+    // Criar mensagem no formato da notificação do GCS
+    const messageData = {
+      name: fileName,
+      bucket: targetBucket,
+      contentType: 'audio/mpeg', // Tipo padrão, pode ser ajustado se necessário
+      timeCreated: new Date().toISOString(),
+      updated: new Date().toISOString()
+    };
+
+    // Publicar mensagem usando json (mais simples)
+    const messageId = await topic.publishMessage({ json: messageData });
+
+    console.log(`✅ Mensagem publicada no Pub/Sub com sucesso`);
+    console.log(`   Tópico: ${topicName}`);
+    console.log(`   Arquivo: ${fileName}`);
+    console.log(`   Bucket: ${targetBucket}`);
+    console.log(`   Message ID: ${messageId}`);
+
+    return messageId;
+  } catch (error) {
+    console.error('❌ Erro ao publicar mensagem no Pub/Sub:', error);
+    throw error;
+  }
+};
+
+/**
  * Upload de imagem para GCS
  * @param {Buffer} fileBuffer - Buffer do arquivo
  * @param {string} fileName - Nome do arquivo
@@ -582,6 +633,7 @@ module.exports = {
   fileExists,
   getFileMetadata,
   uploadImage,
+  publishAudioToPubSub,
   ALLOWED_FILE_TYPES,
   ALLOWED_AUDIO_TYPES,
   ALLOWED_IMAGE_TYPES,
