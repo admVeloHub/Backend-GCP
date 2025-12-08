@@ -1,7 +1,10 @@
-// VERSION: v1.0.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const Cursos = require('../models/Cursos');
+const Modulos = require('../models/Modulos');
+const Secoes = require('../models/Secoes');
+const Aulas = require('../models/Aulas');
 
 // GET /api/academy/cursos/active - Buscar apenas cursos ativos (deve vir antes de /:id)
 router.get('/active', async (req, res) => {
@@ -350,10 +353,6 @@ router.delete('/:id', async (req, res) => {
     global.emitJson({ id });
 
     // Buscar módulos do curso para deletar em cascata
-    const Modulos = require('../models/Modulos');
-    const Secoes = require('../models/Secoes');
-    const Aulas = require('../models/Aulas');
-    
     const modulosResult = await Modulos.getByCursoId(id);
     if (modulosResult.success && modulosResult.data.length > 0) {
       // Para cada módulo, deletar seções e aulas
