@@ -1,7 +1,7 @@
-# VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+# VERSION: v1.1.0 | DATE: 2025-12-08 | AUTHOR: VeloHub Development Team
 # Dockerfile para Backend API - Cloud Run
 
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Definir diretório de trabalho
 WORKDIR /app

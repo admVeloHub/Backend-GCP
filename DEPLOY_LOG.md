@@ -1,5 +1,46 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2025-12-08
+
+**Data/Hora:** 2025-12-08 13:35:39  
+**Tipo:** GitHub Push  
+**Versão:** v4.12.0 (server.js), v3.7.0 (package.json)  
+**Repositório:** admVeloHub/Backend-GCP  
+**Branch:** main  
+
+### Descrição:
+Implementação de serviço WhatsApp e atualizações de dependências:
+- Implementação completa do serviço WhatsApp usando Baileys
+- Rotas de API para integração WhatsApp
+- Serviços de autenticação MongoDB para WhatsApp
+- Documentação de configuração de volume persistente
+- Atualizações de dependências no package.json
+
+### Arquivos Criados:
+- `WHATSAPP_VOLUME_SETUP.md` (v1.0.0) - Documentação de configuração de volume persistente
+- `backend/routes/whatsapp.js` (v1.0.0) - Rotas de API para WhatsApp
+- `backend/services/whatsapp/baileysService.js` (v1.0.0) - Serviço Baileys para WhatsApp
+- `backend/services/whatsapp/mongoAuthAdapter.js` (v1.0.0) - Adaptador de autenticação MongoDB
+- `docs/CONFIGURACAO_VOLUME_PERSISTENTE.md` (v1.0.0) - Documentação de configuração de volume
+- `docs/QUICK_START_VOLUME.md` (v1.0.0) - Guia rápido de início com volume
+
+### Arquivos Modificados:
+- `backend/server.js` (v4.12.0) - Integração de rotas WhatsApp e atualizações
+- `package.json` (v3.7.0) - Atualização de dependências
+- `package-lock.json` - Atualização de dependências
+
+### Funcionalidades Implementadas:
+- ✅ Integração completa com WhatsApp via Baileys
+- ✅ Rotas de API para gerenciamento de WhatsApp
+- ✅ Autenticação MongoDB para sessões WhatsApp
+- ✅ Documentação completa de configuração
+- ✅ Suporte a volume persistente para sessões
+
+### Commit Hash: 277bade
+### Status: ✅ Sucesso
+
+---
+
 ## GitHub Push - 2025-01-30
 
 **Data/Hora:** 2025-01-30 20:00:00  
