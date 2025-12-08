@@ -2,6 +2,39 @@
 
 ## GitHub Push - 2025-12-08
 
+**Data/Hora:** 2025-12-08 15:27:29  
+**Tipo:** GitHub Push  
+**Versão:** v1.1.0 (Dockerfile), v3.8.0 (package.json)  
+**Repositório:** admVeloHub/Backend-GCP  
+**Branch:** main  
+
+### Descrição:
+Correção crítica de compatibilidade Node.js para build no Cloud Build:
+- Atualização do Dockerfile de Node.js 18 para Node.js 20
+- Atualização da especificação de engines no package.json
+- Correção do erro de build causado por incompatibilidade com @whiskeysockets/baileys
+- Baileys requer Node.js 20+ para funcionar corretamente
+
+### Arquivos Modificados:
+- `Dockerfile` (v1.0.0 → v1.1.0) - Atualizado de `node:18-alpine` para `node:20-alpine`
+- `package.json` (v3.7.0 → v3.8.0) - Atualizado engines.node de `>=16.0.0` para `>=20.0.0`, engines.npm de `>=8.0.0` para `>=10.0.0`
+- `DEPLOY_LOG.md` - Atualização do log de deploy
+
+### Problema Resolvido:
+- ❌ Erro de build: `npm error Please upgrade to Node.js 20+ to proceed`
+- ❌ Pacote @whiskeysockets/baileys requerendo Node.js 20+
+- ❌ Build falhando no Cloud Build com Node.js 18.20.8
+- ✅ Dockerfile atualizado para Node.js 20-alpine
+- ✅ package.json atualizado com engines corretos
+- ✅ Build agora compatível com todas as dependências
+
+### Commit Hash: e633154
+### Status: ✅ Sucesso
+
+---
+
+## GitHub Push - 2025-12-08
+
 **Data/Hora:** 2025-12-08 13:35:39  
 **Tipo:** GitHub Push  
 **Versão:** v4.12.0 (server.js), v3.7.0 (package.json)  
