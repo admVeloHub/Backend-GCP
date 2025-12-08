@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
+    "migrate-academy": "node backend/scripts/migrate-academy-data.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
