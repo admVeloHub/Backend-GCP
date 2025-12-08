@@ -693,7 +693,168 @@ const data = await response.json();
 
 ---
 
-## 🔄 Atualizações Recentes (v1.1.0)
+## 📚 Academy API Normalizada (v2.0.0)
+
+### Estrutura Normalizada
+
+A partir da versão 2.0.0, o schema foi normalizado em 4 coleções separadas para evitar limite de 16MB do MongoDB:
+
+1. **cursos** - Informações básicas do curso
+2. **modulos** - Módulos com referência ao curso
+3. **secoes** - Seções (temas) com referência ao módulo
+4. **aulas** - Aulas com referência à seção
+
+### Endpoints de Cursos Normalizados
+
+#### GET /api/academy/cursos
+Listar todos os cursos (sem módulos/seções/aulas)
+
+#### GET /api/academy/cursos/:id
+Obter curso por ID (sem módulos/seções/aulas)
+
+#### GET /api/academy/cursos/:id/complete
+Obter curso completo com módulos, seções e aulas agregados (formato compatível com estrutura antiga)
+
+#### GET /api/academy/cursos/active
+Listar cursos ativos
+
+#### GET /api/academy/cursos/curso/:cursoNome
+Buscar cursos por nome
+
+#### GET /api/academy/cursos/classe/:cursoClasse
+Buscar cursos por classe
+
+#### POST /api/academy/cursos
+Criar novo curso
+
+**Body:**
+```json
+{
+  "cursoClasse": "Essencial",
+  "cursoNome": "produtos",
+  "cursoDescription": "Descrição do curso",
+  "courseOrder": 1,
+  "isActive": true,
+  "createdBy": "admin@velotax.com.br",
+  "version": 1
+}
+```
+
+#### PUT /api/academy/cursos/:id
+Atualizar curso
+
+#### DELETE /api/academy/cursos/:id
+Deletar curso (cascade delete: deleta módulos, seções e aulas relacionados)
+
+### Endpoints de Módulos
+
+#### GET /api/academy/modulos/curso/:cursoId
+Buscar módulos por curso
+
+#### GET /api/academy/modulos/:id
+Obter módulo por ID
+
+#### POST /api/academy/modulos
+Criar novo módulo
+
+**Body:**
+```json
+{
+  "cursoId": "ObjectId",
+  "moduleId": "modulo-1",
+  "moduleNome": "Módulo 1: Introdução",
+  "moduleOrder": 1,
+  "isActive": true
+}
+```
+
+#### PUT /api/academy/modulos/:id
+Atualizar módulo
+
+#### DELETE /api/academy/modulos/:id
+Deletar módulo (cascade delete: deleta seções e aulas relacionados)
+
+### Endpoints de Seções
+
+#### GET /api/academy/secoes/modulo/:moduloId
+Buscar seções por módulo
+
+#### GET /api/academy/secoes/:id
+Obter seção por ID
+
+#### POST /api/academy/secoes
+Criar nova seção
+
+**Body:**
+```json
+{
+  "moduloId": "ObjectId",
+  "temaNome": "Introdução ao Sistema",
+  "temaOrder": 1,
+  "isActive": true,
+  "hasQuiz": false,
+  "quizId": null
+}
+```
+
+#### PUT /api/academy/secoes/:id
+Atualizar seção
+
+#### DELETE /api/academy/secoes/:id
+Deletar seção (cascade delete: deleta aulas relacionadas)
+
+### Endpoints de Aulas
+
+#### GET /api/academy/aulas/secao/:secaoId
+Buscar aulas por seção
+
+#### GET /api/academy/aulas/:id
+Obter aula por ID
+
+#### POST /api/academy/aulas
+Criar nova aula
+
+**Body:**
+```json
+{
+  "secaoId": "ObjectId",
+  "lessonId": "l1-1",
+  "lessonTipo": "video",
+  "lessonTitulo": "Bem vindo ao VeloAcademy",
+  "lessonOrdem": 1,
+  "isActive": true,
+  "lessonContent": [
+    { "url": "https://youtu.be/ABC123xyz" }
+  ],
+  "driveId": null,
+  "youtubeId": "ABC123xyz",
+  "duration": "10:30"
+}
+```
+
+#### PUT /api/academy/aulas/:id
+Atualizar aula
+
+#### DELETE /api/academy/aulas/:id
+Deletar aula
+
+### Cascade Delete
+
+- **Deletar curso**: Deleta automaticamente todos os módulos, seções e aulas relacionados
+- **Deletar módulo**: Deleta automaticamente todas as seções e aulas do módulo
+- **Deletar seção**: Deleta automaticamente todas as aulas da seção
+
+---
+
+## 🔄 Atualizações Recentes (v2.0.0)
+
+### Schema Normalizado
+- ✅ Schema separado em 4 coleções (cursos, modulos, secoes, aulas)
+- ✅ Cascade delete implementado
+- ✅ Endpoint `/complete` para compatibilidade com estrutura antiga
+- ✅ Novos endpoints para cada entidade
+
+### Atualizações Recentes (v1.1.0)
 
 ### Campo `cursoDescription` Adicionado
 - ✅ Campo `cursoDescription` (String, opcional) adicionado ao modelo CursosConteudo
