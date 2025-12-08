@@ -52,7 +52,8 @@ const userSchema = new mongoose.Schema({
     capacity: { type: Boolean, default: false },
     config: { type: Boolean, default: false },
     servicos: { type: Boolean, default: false },
-    academy: { type: Boolean, default: false }
+    academy: { type: Boolean, default: false },
+    whatsapp: { type: Boolean, default: false }
   },
   _userTickets: {
     artigos: { type: Boolean, default: false },

@@ -1,13 +1,19 @@
 /**
  * VeloHub SKYNET - WhatsApp API Routes
- * VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.2.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
  * 
  * Rotas para gerenciamento e uso do WhatsApp integrado
+ * Requer permissão 'whatsapp' no sistema de permissionamento
  */
 
 const express = require('express');
 const router = express.Router();
 const baileysService = require('../services/whatsapp/baileysService');
+const { checkPermission } = require('../middleware/auth');
+
+// Middleware de autenticação para rotas de gerenciamento
+// A rota /send não requer permissão pois é usada pelo VeloHub
+const requireWhatsAppPermission = checkPermission('whatsapp');
 
 /**
  * POST /api/whatsapp/send
@@ -68,8 +74,9 @@ router.post('/send', async (req, res) => {
 /**
  * GET /api/whatsapp/status
  * Obter status da conexão WhatsApp (para Console)
+ * Requer permissão 'whatsapp'
  */
-router.get('/status', async (req, res) => {
+router.get('/status', requireWhatsAppPermission, async (req, res) => {
   try {
     const status = baileysService.getStatus();
     
@@ -92,8 +99,9 @@ router.get('/status', async (req, res) => {
 /**
  * GET /api/whatsapp/qr
  * Obter QR code atual para conexão (para Console)
+ * Requer permissão 'whatsapp'
  */
-router.get('/qr', async (req, res) => {
+router.get('/qr', requireWhatsAppPermission, async (req, res) => {
   try {
     const qrData = await baileysService.getQR();
     
@@ -122,8 +130,9 @@ router.get('/qr', async (req, res) => {
 /**
  * POST /api/whatsapp/logout
  * Fazer logout e gerar novo QR code (para Console)
+ * Requer permissão 'whatsapp'
  */
-router.post('/logout', async (req, res) => {
+router.post('/logout', requireWhatsAppPermission, async (req, res) => {
   try {
     console.log('[WHATSAPP API] Logout solicitado');
     
@@ -153,8 +162,9 @@ router.post('/logout', async (req, res) => {
 /**
  * GET /api/whatsapp/number
  * Obter número conectado (para Console)
+ * Requer permissão 'whatsapp'
  */
-router.get('/number', async (req, res) => {
+router.get('/number', requireWhatsAppPermission, async (req, res) => {
   try {
     const numberData = baileysService.getConnectedNumber();
     
