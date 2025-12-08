@@ -1,4 +1,4 @@
-// VERSION: v4.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.12.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -56,6 +56,8 @@ const mongodbCertificadosRoutes = require('./routes/mongodbCertificados');
 const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
 const audioAnaliseRoutes = require('./routes/audioAnalise');
 const uploadsRoutes = require('./routes/uploads');
+const whatsappRoutes = require('./routes/whatsapp');
+const baileysService = require('./services/whatsapp/baileysService');
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -169,6 +171,7 @@ app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
 app.use('/api/audio-analise', audioAnaliseRoutes);
 app.use('/api/uploads', uploadsRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {
@@ -332,12 +335,22 @@ const startServer = async () => {
     
     // Iniciar servidor
     console.log(`🔄 Iniciando servidor HTTP na porta ${PORT}...`);
-    server.listen(PORT, () => {
+    server.listen(PORT, async () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`📊 Console de Conteúdo VeloHub v4.2.0`);
       console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
       console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
+      
+      // Inicializar serviço WhatsApp
+      try {
+        console.log('🔄 Inicializando serviço WhatsApp...');
+        await baileysService.initialize();
+        console.log('✅ Serviço WhatsApp inicializado');
+      } catch (error) {
+        console.error('⚠️ Erro ao inicializar WhatsApp (não crítico):', error.message);
+        console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');
+      }
     });
     
     // Tratamento de erros do servidor
