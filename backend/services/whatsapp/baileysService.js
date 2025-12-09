@@ -1,10 +1,14 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.1 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.2 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.2:
+ * - Melhorado tratamento de desconexão 401: só limpa credenciais se shouldReconnect=false
+ * - Evita limpar credenciais em erros temporários de autenticação
  * 
  * Mudanças v1.1.1:
  * - Adicionados logs detalhados para diagnóstico de estado inconsistente
@@ -134,22 +138,31 @@ async function connect() {
         sock = null; // Garantir que sock seja null quando desconectado
         
         const reason = lastDisconnect?.error?.output?.statusCode;
-        console.log('[WHATSAPP] Conexão fechada. Status:', reason);
+        const shouldReconnect = lastDisconnect?.error?.shouldReconnect;
+        console.log('[WHATSAPP] Conexão fechada. Status:', reason, 'shouldReconnect:', shouldReconnect);
         console.log('[WHATSAPP] Estado atualizado: isConnected=false, sock=null');
         
-        if (reason === DisconnectReason.loggedOut) {
-          console.log('[WHATSAPP] DESLOGADO -> limpando credenciais do MongoDB e pedindo QR novamente...');
-          try {
-            if (adapter) {
-              await adapter.clearAuthState();
+        // Verificar se foi logout real (401 = Unauthorized pode ser logout ou erro temporário)
+        // DisconnectReason.loggedOut = 401, mas nem sempre significa logout permanente
+        if (reason === DisconnectReason.loggedOut || reason === 401) {
+          // Verificar se shouldReconnect é false (logout permanente)
+          if (shouldReconnect === false) {
+            console.log('[WHATSAPP] DESLOGADO PERMANENTE -> limpando credenciais do MongoDB e pedindo QR novamente...');
+            try {
+              if (adapter) {
+                await adapter.clearAuthState();
+              }
+            } catch (err) {
+              console.error('[WHATSAPP] Erro ao limpar credenciais do MongoDB:', err.message);
             }
-          } catch (err) {
-            console.error('[WHATSAPP] Erro ao limpar credenciais do MongoDB:', err.message);
+          } else {
+            console.log('[WHATSAPP] Erro 401 temporário -> tentando reconectar sem limpar credenciais...');
           }
         } else {
-          console.log('[WHATSAPP] Desconectado -> tentando reconectar sem pedir QR...');
+          console.log('[WHATSAPP] Desconectado (status:', reason, ') -> tentando reconectar sem pedir QR...');
         }
         
+        // Reconectar após delay
         setTimeout(() => {
           reconnecting = false;
           connect();
