@@ -1,10 +1,15 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.3 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.4 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.4:
+ * - Corrigida limpeza de número quando há inconsistência de estado
+ * - getStatus() e getConnectedNumber() agora retornam null para número quando desconectado
+ * - Limpeza automática de connectedNumber e connectedNumberFormatted ao detectar inconsistência
  * 
  * Mudanças v1.1.3:
  * - Corrigida inconsistência entre getStatus() e getConnectedNumber()
@@ -356,18 +361,20 @@ function getStatus() {
   // Verificar se há inconsistência entre isConnected e sock
   const actuallyConnected = isConnected && sock && !sock.end;
   
-  // Se há inconsistência, corrigir o estado
+  // Se há inconsistência, corrigir o estado e limpar número
   if (isConnected && !sock) {
     console.warn('[WHATSAPP] Estado inconsistente detectado: isConnected=true mas sock=null. Corrigindo...');
     isConnected = false;
     connectionStatus = 'disconnected';
+    connectedNumber = null;
+    connectedNumberFormatted = null;
   }
   
   return {
     connected: actuallyConnected,
     status: actuallyConnected ? connectionStatus : 'disconnected',
-    number: connectedNumber,
-    numberFormatted: connectedNumberFormatted,
+    number: actuallyConnected ? connectedNumber : null,
+    numberFormatted: actuallyConnected ? connectedNumberFormatted : null,
     hasQR: !!currentQR && (!qrExpiresAt || Date.now() < qrExpiresAt)
   };
 }
@@ -403,16 +410,18 @@ function getConnectedNumber() {
   // Usar a mesma lógica de verificação do getStatus() para consistência
   const actuallyConnected = isConnected && sock && !sock.end;
   
-  // Se há inconsistência, corrigir o estado
+  // Se há inconsistência, corrigir o estado e limpar número
   if (isConnected && !sock) {
     console.warn('[WHATSAPP] Estado inconsistente detectado em getConnectedNumber: isConnected=true mas sock=null. Corrigindo...');
     isConnected = false;
     connectionStatus = 'disconnected';
+    connectedNumber = null;
+    connectedNumberFormatted = null;
   }
   
   return {
-    number: connectedNumber,
-    formatted: connectedNumberFormatted,
+    number: actuallyConnected ? connectedNumber : null,
+    formatted: actuallyConnected ? connectedNumberFormatted : null,
     connected: actuallyConnected
   };
 }
