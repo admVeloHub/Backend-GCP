@@ -1,10 +1,14 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.2 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.3 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.3:
+ * - Corrigida inconsistência entre getStatus() e getConnectedNumber()
+ * - Ambas as funções agora usam a mesma verificação de socket para consistência
  * 
  * Mudanças v1.1.2:
  * - Melhorado tratamento de desconexão 401: só limpa credenciais se shouldReconnect=false
@@ -396,10 +400,20 @@ async function getQR() {
  * @returns {Object} { number: string, formatted: string, connected: boolean }
  */
 function getConnectedNumber() {
+  // Usar a mesma lógica de verificação do getStatus() para consistência
+  const actuallyConnected = isConnected && sock && !sock.end;
+  
+  // Se há inconsistência, corrigir o estado
+  if (isConnected && !sock) {
+    console.warn('[WHATSAPP] Estado inconsistente detectado em getConnectedNumber: isConnected=true mas sock=null. Corrigindo...');
+    isConnected = false;
+    connectionStatus = 'disconnected';
+  }
+  
   return {
     number: connectedNumber,
     formatted: connectedNumberFormatted,
-    connected: isConnected
+    connected: actuallyConnected
   };
 }
 
