@@ -125,7 +125,7 @@ app.use(cors({
   origin: "*", // Permitir todas as origens para Vercel
   credentials: false, // Desabilitar credentials para Vercel
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-User-Email"]
 }));
 
 // Rate limiting
