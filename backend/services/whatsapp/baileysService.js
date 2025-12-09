@@ -1,10 +1,14 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.1 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.1:
+ * - Adicionados logs detalhados para diagnóstico de estado inconsistente
+ * - Verificação adicional se socket foi encerrado antes de enviar mensagem
  */
 
 const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
@@ -127,9 +131,11 @@ async function connect() {
         connectionStatus = 'disconnected';
         connectedNumber = null;
         connectedNumberFormatted = null;
+        sock = null; // Garantir que sock seja null quando desconectado
         
         const reason = lastDisconnect?.error?.output?.statusCode;
         console.log('[WHATSAPP] Conexão fechada. Status:', reason);
+        console.log('[WHATSAPP] Estado atualizado: isConnected=false, sock=null');
         
         if (reason === DisconnectReason.loggedOut) {
           console.log('[WHATSAPP] DESLOGADO -> limpando credenciais do MongoDB e pedindo QR novamente...');
@@ -236,7 +242,19 @@ async function logout() {
  * @returns {Promise<Object>} { ok: boolean, messageId?: string, messageIds?: Array, error?: string }
  */
 async function sendMessage(jid, mensagem, imagens = [], videos = []) {
+  // Verificação detalhada do estado da conexão
+  console.log(`[WHATSAPP] Verificando estado antes de enviar: isConnected=${isConnected}, sock=${!!sock}, connectionStatus=${connectionStatus}`);
+  
   if (!isConnected || !sock) {
+    console.error(`[WHATSAPP] Estado inconsistente: isConnected=${isConnected}, sock=${!!sock}, connectionStatus=${connectionStatus}`);
+    return { ok: false, error: 'WhatsApp desconectado' };
+  }
+  
+  // Verificar se o socket ainda está válido
+  if (sock.end) {
+    console.error('[WHATSAPP] Socket foi encerrado');
+    isConnected = false;
+    connectionStatus = 'disconnected';
     return { ok: false, error: 'WhatsApp desconectado' };
   }
   
@@ -318,9 +336,19 @@ async function sendMessage(jid, mensagem, imagens = [], videos = []) {
  * @returns {Object} Status da conexão
  */
 function getStatus() {
+  // Verificar se há inconsistência entre isConnected e sock
+  const actuallyConnected = isConnected && sock && !sock.end;
+  
+  // Se há inconsistência, corrigir o estado
+  if (isConnected && !sock) {
+    console.warn('[WHATSAPP] Estado inconsistente detectado: isConnected=true mas sock=null. Corrigindo...');
+    isConnected = false;
+    connectionStatus = 'disconnected';
+  }
+  
   return {
-    connected: isConnected,
-    status: connectionStatus,
+    connected: actuallyConnected,
+    status: actuallyConnected ? connectionStatus : 'disconnected',
     number: connectedNumber,
     numberFormatted: connectedNumberFormatted,
     hasQR: !!currentQR && (!qrExpiresAt || Date.now() < qrExpiresAt)
