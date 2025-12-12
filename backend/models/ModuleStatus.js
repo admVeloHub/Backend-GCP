@@ -1,4 +1,5 @@
-// VERSION: v2.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.11.0 - Adicionado campo _dividaZero e removido _saudeSimplificada (reorganização)
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -70,6 +71,24 @@ const moduleStatusSchema = new mongoose.Schema({
     required: true,
     default: 'on',
     enum: ['on', 'off', 'revisao']
+  },
+  _saudeSimplificada: {
+    type: String,
+    required: true,
+    default: 'on',
+    enum: ['on', 'off', 'revisao']
+  },
+  _clubeVelotax: {
+    type: String,
+    required: true,
+    default: 'on',
+    enum: ['on', 'off', 'revisao']
+  },
+  _dividaZero: {
+    type: String,
+    required: true,
+    default: 'on',
+    enum: ['on', 'off', 'revisao']
   }
 }, {
   timestamps: true,
@@ -110,6 +129,8 @@ moduleStatusSchema.index({ _pgtoAntecip: 1 });
 moduleStatusSchema.index({ _irpf: 1 });
 moduleStatusSchema.index({ _seguroCred: 1 });
 moduleStatusSchema.index({ _seguroCel: 1 });
+moduleStatusSchema.index({ _clubeVelotax: 1 });
+moduleStatusSchema.index({ _dividaZero: 1 });
 moduleStatusSchema.index({ updatedAt: -1 });
 
 // Índices para otimização do schema FAQ

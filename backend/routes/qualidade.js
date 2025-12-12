@@ -278,16 +278,16 @@ const validateFuncionario = (req, res, next) => {
   
   // Validação de acessos - garantir que não receba valores padrão true
   if (acessos !== undefined && acessos !== null) {
-    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean}
+    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean}
     if (typeof acessos === 'object' && !Array.isArray(acessos)) {
-      const validKeys = ['Velohub', 'Console'];
+      const validKeys = ['Velohub', 'Console', 'Academy'];
       const keys = Object.keys(acessos);
       
       // Verificar se todas as chaves são válidas
       if (!keys.every(key => validKeys.includes(key))) {
         return res.status(400).json({
           success: false,
-          message: 'Acessos deve conter apenas as chaves Velohub e/ou Console'
+          message: 'Acessos deve conter apenas as chaves Velohub, Console e/ou Academy'
         });
       }
       
@@ -314,7 +314,7 @@ const validateFuncionario = (req, res, next) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean} ou array de objetos'
+        message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean} ou array de objetos'
       });
     }
   }
@@ -490,6 +490,44 @@ const validateAvaliacaoGPT = (req, res, next) => {
   next();
 };
 
+// Função helper para normalizar formato de acessos ao retornar dados
+const normalizarAcessosParaResposta = (acessos) => {
+  // Se for null ou undefined, retornar objeto vazio
+  if (!acessos) {
+    return { Velohub: false, Console: false, Academy: false };
+  }
+  
+  // Se já for objeto booleano, garantir que tenha todas as chaves
+  if (typeof acessos === 'object' && !Array.isArray(acessos)) {
+    return {
+      Velohub: acessos.Velohub === true,
+      Console: acessos.Console === true,
+      Academy: acessos.Academy === true
+    };
+  }
+  
+  // Se for array (formato antigo), converter para objeto booleano
+  if (Array.isArray(acessos)) {
+    const novoAcessos = { Velohub: false, Console: false, Academy: false };
+    acessos.forEach(acesso => {
+      if (acesso && acesso.sistema) {
+        const sistema = acesso.sistema.toLowerCase();
+        if (sistema === 'velohub') {
+          novoAcessos.Velohub = true;
+        } else if (sistema === 'console') {
+          novoAcessos.Console = true;
+        } else if (sistema === 'academy') {
+          novoAcessos.Academy = true;
+        }
+      }
+    });
+    return novoAcessos;
+  }
+  
+  // Fallback: objeto vazio
+  return { Velohub: false, Console: false, Academy: false };
+};
+
 // GET /api/qualidade/funcionarios - Listar todos os funcionários
 router.get('/funcionarios', async (req, res) => {
   try {
@@ -498,10 +536,19 @@ router.get('/funcionarios', async (req, res) => {
     const funcionarios = await QualidadeFuncionario.find({})
       .sort({ createdAt: -1 });
     
+    // Normalizar formato de acessos para cada funcionário
+    const funcionariosNormalizados = funcionarios.map(func => {
+      const funcionarioObj = func.toObject ? func.toObject() : func;
+      return {
+        ...funcionarioObj,
+        acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
+      };
+    });
+    
     res.json({
       success: true,
-      data: funcionarios,
-      count: funcionarios.length
+      data: funcionariosNormalizados,
+      count: funcionariosNormalizados.length
     });
   } catch (error) {
     console.error('[QUALIDADE-FUNCIONARIOS] Erro ao buscar funcionários:', error);
@@ -524,10 +571,19 @@ router.get('/funcionarios/ativos', async (req, res) => {
       afastado: false
     }).sort({ createdAt: -1 });
     
+    // Normalizar formato de acessos para cada funcionário
+    const funcionariosNormalizados = funcionariosAtivos.map(func => {
+      const funcionarioObj = func.toObject ? func.toObject() : func;
+      return {
+        ...funcionarioObj,
+        acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
+      };
+    });
+    
     res.json({
       success: true,
-      data: funcionariosAtivos,
-      count: funcionariosAtivos.length
+      data: funcionariosNormalizados,
+      count: funcionariosNormalizados.length
     });
   } catch (error) {
     console.error('[QUALIDADE-FUNCIONARIOS] Erro ao buscar funcionários ativos:', error);
@@ -553,9 +609,16 @@ router.get('/funcionarios/:id', async (req, res) => {
       });
     }
     
+    // Normalizar formato de acessos
+    const funcionarioObj = funcionario.toObject ? funcionario.toObject() : funcionario;
+    const funcionarioNormalizado = {
+      ...funcionarioObj,
+      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
+    };
+    
     res.json({
       success: true,
-      data: funcionario
+      data: funcionarioNormalizado
     });
   } catch (error) {
     console.error('[QUALIDADE-FUNCIONARIOS] Erro ao buscar funcionário:', error);
@@ -617,11 +680,14 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
             novoAcessos.Console = true;
           }
+          if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
+            novoAcessos.Academy = true;
+          }
         });
         // Apenas definir acessos se houver pelo menos um valor true
         funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
       }
-      // Se está no formato novo (objeto), garantir que apenas Velohub e Console existam
+      // Se está no formato novo (objeto), garantir que apenas Velohub, Console e Academy existam
       else if (typeof funcionarioData.acessos === 'object') {
         const novoAcessos = {};
         if (funcionarioData.acessos.Velohub === true) {
@@ -629,6 +695,9 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
         }
         if (funcionarioData.acessos.Console === true) {
           novoAcessos.Console = true;
+        }
+        if (funcionarioData.acessos.Academy === true) {
+          novoAcessos.Academy = true;
         }
         // Apenas definir acessos se houver pelo menos um valor true
         funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
@@ -760,11 +829,14 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
             novoAcessos.Console = true;
           }
+          if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
+            novoAcessos.Academy = true;
+          }
         });
         // Apenas definir acessos se houver pelo menos um valor true
         updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
       }
-      // Se está no formato novo (objeto), garantir que apenas Velohub e Console existam
+      // Se está no formato novo (objeto), garantir que apenas Velohub, Console e Academy existam
       else if (typeof updateData.acessos === 'object') {
         const novoAcessos = {};
         if (updateData.acessos.Velohub === true) {
@@ -772,6 +844,9 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
         }
         if (updateData.acessos.Console === true) {
           novoAcessos.Console = true;
+        }
+        if (updateData.acessos.Academy === true) {
+          novoAcessos.Academy = true;
         }
         // Apenas definir acessos se houver pelo menos um valor true
         updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;

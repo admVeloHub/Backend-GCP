@@ -1,4 +1,5 @@
-// VERSION: v2.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.11.0 - Adicionado Divida Zero, removido Saúde Simplificada, reorganização de serviços
 const express = require('express');
 const router = express.Router();
 const { ModuleStatus } = require('../models/ModuleStatus');
@@ -34,9 +35,11 @@ router.get('/', async (req, res) => {
       'credito-pessoal': statusDoc._pessoal,
       'antecipacao': statusDoc._antecipacao,
       'pagamento-antecipado': statusDoc._pgtoAntecip,
+      'clube-velotax': statusDoc._clubeVelotax,
       'modulo-irpf': statusDoc._irpf,
       'seguro-prestamista': statusDoc._seguroCred,
-      'seguro-celular': statusDoc._seguroCel
+      'seguro-celular': statusDoc._seguroCel,
+      'divida-zero': statusDoc._dividaZero
     };
     
     const result = {
@@ -104,8 +107,8 @@ router.post('/', async (req, res) => {
     }
     
     // Detectar formato dos dados recebidos primeiro
-    const schemaFields = ['_trabalhador', '_pessoal', '_antecipacao', '_pgtoAntecip', '_irpf', '_seguroCred', '_seguroCel'];
-    const frontendKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
+    const schemaFields = ['_trabalhador', '_pessoal', '_antecipacao', '_pgtoAntecip', '_clubeVelotax', '_irpf', '_seguroCred', '_seguroCel', '_dividaZero'];
+    const frontendKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
     
     const hasSchemaFields = schemaFields.some(field => req.body.hasOwnProperty(field));
     const hasFrontendKeys = frontendKeys.some(key => req.body.hasOwnProperty(key));
@@ -201,9 +204,11 @@ router.post('/', async (req, res) => {
           'credito-pessoal': '_pessoal',
           'antecipacao': '_antecipacao',
           'pagamento-antecipado': '_pgtoAntecip',
+          'clube-velotax': '_clubeVelotax',
           'modulo-irpf': '_irpf',
           'seguro-prestamista': '_seguroCred',
-          'seguro-celular': '_seguroCel'
+          'seguro-celular': '_seguroCel',
+          'divida-zero': '_dividaZero'
         };
         
         const updateData = {};
@@ -228,7 +233,7 @@ router.post('/', async (req, res) => {
         if (Object.keys(updateData).length === 0) {
           return res.status(400).json({
             success: false,
-            error: 'Nenhuma chave válida do frontend encontrada. Chaves válidas: credito-trabalhador, credito-pessoal, antecipacao, pagamento-antecipado, modulo-irpf, seguro-prestamista, seguro-celular'
+            error: 'Nenhuma chave válida do frontend encontrada. Chaves válidas: credito-trabalhador, credito-pessoal, antecipacao, pagamento-antecipado, clube-velotax, modulo-irpf, seguro-prestamista, seguro-celular, divida-zero'
           });
         }
         
@@ -271,7 +276,7 @@ router.post('/', async (req, res) => {
           });
         }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
+      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
       const validStatuses = ['on', 'off', 'revisao'];
       
       if (!validKeys.includes(moduleKey)) {
@@ -294,9 +299,11 @@ router.post('/', async (req, res) => {
         'credito-pessoal': '_pessoal',
         'antecipacao': '_antecipacao',
         'pagamento-antecipado': '_pgtoAntecip',
+        'clube-velotax': '_clubeVelotax',
         'modulo-irpf': '_irpf',
         'seguro-prestamista': '_seguroCred',
-        'seguro-celular': '_seguroCel'
+        'seguro-celular': '_seguroCel',
+        'divida-zero': '_dividaZero'
       };
       
       const fieldName = fieldMapping[moduleKey];
@@ -393,7 +400,7 @@ router.put('/', async (req, res) => {
         });
       }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular'];
+      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
       const validStatuses = ['on', 'off', 'revisao'];
       
       // Mapear moduleKey para campo do schema
@@ -402,9 +409,11 @@ router.put('/', async (req, res) => {
         'credito-pessoal': '_pessoal',
         'antecipacao': '_antecipacao',
         'pagamento-antecipado': '_pgtoAntecip',
+        'clube-velotax': '_clubeVelotax',
         'modulo-irpf': '_irpf',
         'seguro-prestamista': '_seguroCred',
-        'seguro-celular': '_seguroCel'
+        'seguro-celular': '_seguroCel',
+        'divida-zero': '_dividaZero'
       };
       
       // Validar todos os dados antes de fazer qualquer atualização

@@ -1,4 +1,5 @@
-// VERSION: v1.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.10.0 - Adicionado campo Academy ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean}
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -106,7 +107,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
   },
   // Campo acessos suporta ambos os formatos durante transição
   // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
-  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean}
+  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean}
   acessos: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
@@ -114,10 +115,10 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
       validator: function(v) {
         if (!v) return true; // Opcional
         
-        // Formato novo: objeto com Velohub e/ou Console (booleanos)
+        // Formato novo: objeto com Velohub, Console e/ou Academy (booleanos)
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
-          const validKeys = ['Velohub', 'Console'];
+          const validKeys = ['Velohub', 'Console', 'Academy'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
         
@@ -132,7 +133,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         
         return false;
       },
-      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean} ou array de objetos [{sistema, perfil, ...}]'
+      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean} ou array de objetos [{sistema, perfil, ...}]'
     }
   },
   desligado: {
