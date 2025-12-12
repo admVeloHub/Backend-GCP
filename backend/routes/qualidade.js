@@ -1,5 +1,8 @@
-// VERSION: v5.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
-// CHANGELOG: v5.6.0 - Deprecados endpoints POST/PUT/DELETE de qualidade_avaliacoes_gpt. Retornam erro 410 com mensagem de migração para audio_analise_results.
+// VERSION: v5.8.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: 
+// v5.8.0 - Implementada sincronização automática entre qualidade_funcionarios.acessos.Console e console_config.users. Quando Console=true, cria usuário no config. Quando Console=false, remove usuário do config.
+// v5.7.0 - Adicionados novos campos ao schema qualidade_funcionarios: CPF, profile_pic, userMail, password. Campo acessos alterado de array para objeto booleano {Velohub: Boolean, Console: Boolean} sem valores padrão true.
+// v5.6.0 - Deprecados endpoints POST/PUT/DELETE de qualidade_avaliacoes_gpt. Retornam erro 410 com mensagem de migração para audio_analise_results.
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -8,6 +11,109 @@ const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
 const QualidadeAvaliacaoGPT = require('../models/QualidadeAvaliacaoGPT');
 const QualidadeAtuacoes = require('../models/QualidadeAtuacoes');
 const QualidadeFuncoes = require('../models/QualidadeFuncoes');
+const Users = require('../models/Users');
+
+// Função helper para gerar _userId a partir de primeiro e último nome
+const gerarUserId = (colaboradorNome) => {
+  if (!colaboradorNome || typeof colaboradorNome !== 'string') {
+    return null;
+  }
+  const nomeParts = colaboradorNome.trim().split(' ').filter(n => n.length > 0);
+  if (nomeParts.length === 0) {
+    return null;
+  }
+  const primeiroNome = nomeParts[0];
+  const ultimoNome = nomeParts.length > 1 ? nomeParts[nomeParts.length - 1] : primeiroNome;
+  return `${primeiroNome} ${ultimoNome}`;
+};
+
+// Função helper para sincronizar usuário no config
+// Retorna { success: boolean, message: string, action: 'created' | 'deleted' | 'skipped' | 'error' }
+const syncUserToConfig = async (funcionario, consoleAcesso) => {
+  try {
+    // Se Console = false, deletar usuário do config se existir
+    if (consoleAcesso === false || !consoleAcesso) {
+      if (!funcionario.userMail) {
+        return { success: true, message: 'Sem email, não há usuário para deletar', action: 'skipped' };
+      }
+      
+      const deletedUser = await Users.findOneAndDelete({ _userMail: funcionario.userMail });
+      if (deletedUser) {
+        console.log(`✅ [SYNC] Usuário deletado do config: ${funcionario.userMail}`);
+        return { success: true, message: 'Usuário deletado do config', action: 'deleted' };
+      }
+      return { success: true, message: 'Usuário não encontrado no config', action: 'skipped' };
+    }
+    
+    // Se Console = true, criar ou verificar existência no config
+    if (consoleAcesso === true) {
+      if (!funcionario.userMail) {
+        console.warn(`⚠️ [SYNC] Funcionário ${funcionario.colaboradorNome} tem Console=true mas não tem userMail`);
+        return { success: false, message: 'userMail não definido', action: 'error' };
+      }
+      
+      const userId = gerarUserId(funcionario.colaboradorNome);
+      if (!userId) {
+        console.warn(`⚠️ [SYNC] Não foi possível gerar userId para ${funcionario.colaboradorNome}`);
+        return { success: false, message: 'Não foi possível gerar userId', action: 'error' };
+      }
+      
+      // Verificar se usuário já existe
+      const existingUser = await Users.findOne({ _userMail: funcionario.userMail });
+      if (existingUser) {
+        console.log(`✅ [SYNC] Usuário já existe no config: ${funcionario.userMail}`);
+        return { success: true, message: 'Usuário já existe no config', action: 'skipped' };
+      }
+      
+      // Criar novo usuário no config
+      const newUser = new Users({
+        _userMail: funcionario.userMail,
+        _userId: userId,
+        _userRole: 'Editor',
+        _userClearance: {
+          artigos: false,
+          velonews: false,
+          botPerguntas: false,
+          botAnalises: false,
+          hubAnalises: false,
+          chamadosInternos: false,
+          igp: false,
+          qualidade: false,
+          capacity: false,
+          config: false,
+          servicos: false,
+          academy: false,
+          whatsapp: false
+        },
+        _userTickets: {
+          artigos: false,
+          processos: false,
+          roteiros: false,
+          treinamentos: false,
+          funcionalidades: false,
+          recursos: false,
+          gestao: false,
+          rhFin: false,
+          facilities: false
+        },
+        _funcoesAdministrativas: {
+          avaliador: false,
+          auditoria: false,
+          relatoriosGestao: false
+        }
+      });
+      
+      const savedUser = await newUser.save();
+      console.log(`✅ [SYNC] Usuário criado no config: ${funcionario.userMail} (userId: ${userId})`);
+      return { success: true, message: 'Usuário criado no config', action: 'created', data: savedUser };
+    }
+    
+    return { success: true, message: 'Nenhuma ação necessária', action: 'skipped' };
+  } catch (error) {
+    console.error(`❌ [SYNC] Erro ao sincronizar usuário ${funcionario.userMail || funcionario.colaboradorNome}:`, error.message);
+    return { success: false, message: error.message, action: 'error', error: error };
+  }
+};
 
 // Função para calcular pontuação com novos critérios
 const calcularPontuacao = (avaliacaoData) => {
@@ -107,7 +213,7 @@ router.use(logResponse);
 
 // Validação de dados obrigatórios para funcionários
 const validateFuncionario = (req, res, next) => {
-  const { colaboradorNome, empresa, dataContratado } = req.body;
+  const { colaboradorNome, empresa, dataContratado, CPF, userMail, profile_pic, acessos } = req.body;
   
   if (!colaboradorNome || colaboradorNome.trim() === '') {
     return res.status(400).json({
@@ -137,6 +243,80 @@ const validateFuncionario = (req, res, next) => {
       success: false,
       message: 'Data de contratação deve ser uma data válida'
     });
+  }
+  
+  // Validação opcional de CPF (11 dígitos, sem pontos ou traços)
+  if (CPF !== undefined && CPF !== null && CPF !== '') {
+    if (typeof CPF !== 'string' || !/^\d{11}$/.test(CPF)) {
+      return res.status(400).json({
+        success: false,
+        message: 'CPF deve conter exatamente 11 dígitos numéricos'
+      });
+    }
+  }
+  
+  // Validação opcional de email
+  if (userMail !== undefined && userMail !== null && userMail !== '') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (typeof userMail !== 'string' || !emailRegex.test(userMail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email inválido'
+      });
+    }
+  }
+  
+  // Validação opcional de profile_pic (deve ser string se fornecido)
+  if (profile_pic !== undefined && profile_pic !== null && profile_pic !== '') {
+    if (typeof profile_pic !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Foto de perfil deve ser uma string (URL)'
+      });
+    }
+  }
+  
+  // Validação de acessos - garantir que não receba valores padrão true
+  if (acessos !== undefined && acessos !== null) {
+    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean}
+    if (typeof acessos === 'object' && !Array.isArray(acessos)) {
+      const validKeys = ['Velohub', 'Console'];
+      const keys = Object.keys(acessos);
+      
+      // Verificar se todas as chaves são válidas
+      if (!keys.every(key => validKeys.includes(key))) {
+        return res.status(400).json({
+          success: false,
+          message: 'Acessos deve conter apenas as chaves Velohub e/ou Console'
+        });
+      }
+      
+      // Verificar se os valores são booleanos
+      if (!keys.every(key => typeof acessos[key] === 'boolean')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valores de acessos devem ser booleanos (true ou false)'
+        });
+      }
+      
+      // Garantir que não sejam definidos como true por padrão se não foram explicitamente fornecidos
+      // Isso é tratado no processamento dos dados, não na validação
+    }
+    // Formato antigo: array de objetos (mantido para compatibilidade)
+    else if (Array.isArray(acessos)) {
+      // Validação básica do formato antigo
+      if (!acessos.every(item => typeof item === 'object' && item.sistema && item.perfil)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Formato de acessos inválido (array)'
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean} ou array de objetos'
+      });
+    }
   }
   
   next();
@@ -409,6 +589,64 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
       funcionarioData.dataAfastamento = new Date(funcionarioData.dataAfastamento);
     }
     
+    // Processar novos campos opcionais
+    // CPF: já validado, apenas garantir trim
+    if (funcionarioData.CPF) {
+      funcionarioData.CPF = funcionarioData.CPF.trim();
+    }
+    
+    // userMail: já validado, garantir lowercase e trim
+    if (funcionarioData.userMail) {
+      funcionarioData.userMail = funcionarioData.userMail.toLowerCase().trim();
+    }
+    
+    // profile_pic: já validado, apenas garantir trim
+    if (funcionarioData.profile_pic) {
+      funcionarioData.profile_pic = funcionarioData.profile_pic.trim();
+    }
+    
+    // Normalizar formato de acessos (converter array para objeto se necessário)
+    if (funcionarioData.acessos) {
+      // Se está no formato antigo (array), converter para objeto booleano
+      if (Array.isArray(funcionarioData.acessos)) {
+        const novoAcessos = {};
+        funcionarioData.acessos.forEach(acesso => {
+          if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
+            novoAcessos.Velohub = true;
+          }
+          if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
+            novoAcessos.Console = true;
+          }
+        });
+        // Apenas definir acessos se houver pelo menos um valor true
+        funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+      }
+      // Se está no formato novo (objeto), garantir que apenas Velohub e Console existam
+      else if (typeof funcionarioData.acessos === 'object') {
+        const novoAcessos = {};
+        if (funcionarioData.acessos.Velohub === true) {
+          novoAcessos.Velohub = true;
+        }
+        if (funcionarioData.acessos.Console === true) {
+          novoAcessos.Console = true;
+        }
+        // Apenas definir acessos se houver pelo menos um valor true
+        funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+      }
+    }
+    // Se acessos não foi fornecido, não definir (null/undefined) - NÃO definir valores padrão true
+    
+    // Gerar hash de senha padrão se não fornecido (primeiroNome.ultimoNomeCPF)
+    if (!funcionarioData.password && funcionarioData.colaboradorNome && funcionarioData.CPF) {
+      // Formato: primeiroNome.ultimoNomeCPF (ex: joao.santos12345678901)
+      // Usa o primeiro e último nome da string, mesmo que tenha nomes intermediários
+      const nomeParts = funcionarioData.colaboradorNome.toLowerCase().trim().split(' ').filter(n => n.length > 0);
+      const primeiroNome = nomeParts[0];
+      const ultimoNome = nomeParts.length > 1 ? nomeParts[nomeParts.length - 1] : primeiroNome;
+      funcionarioData.password = `${primeiroNome}.${ultimoNome}${funcionarioData.CPF}`;
+      // Nota: Em produção, isso deve ser hasheado antes de salvar
+    }
+    
     global.emitTraffic('Qualidade Funcionários', 'processing', 'Transmitindo para DB');
     const novoFuncionario = new QualidadeFuncionario(funcionarioData);
     const funcionarioSalvo = await novoFuncionario.save();
@@ -416,6 +654,18 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
     global.emitTraffic('Qualidade Funcionários', 'completed', 'Concluído - Funcionário criado com sucesso');
     global.emitLog('success', `POST /api/qualidade/funcionarios - Funcionário "${funcionarioSalvo.colaboradorNome}" criado com sucesso`);
     global.emitJson(funcionarioSalvo);
+    
+    // Sincronizar com config se Console = true
+    if (funcionarioSalvo.acessos && funcionarioSalvo.acessos.Console === true) {
+      try {
+        const syncResult = await syncUserToConfig(funcionarioSalvo, true);
+        if (!syncResult.success) {
+          console.warn(`⚠️ [QUALIDADE-FUNCIONARIOS] Falha na sincronização com config (não impede salvamento): ${syncResult.message}`);
+        }
+      } catch (syncError) {
+        console.error(`❌ [QUALIDADE-FUNCIONARIOS] Erro na sincronização com config (não impede salvamento):`, syncError);
+      }
+    }
     
     res.status(201).json({
       success: true,
@@ -440,7 +690,7 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
     console.log(`[QUALIDADE-FUNCIONARIOS] ${new Date().toISOString()} - PUT /funcionarios/${id} - PROCESSING`);
     console.log(`[QUALIDADE-FUNCIONARIOS] Request body:`, JSON.stringify(req.body, null, 2));
     
-    // Verificar se funcionário existe
+    // Verificar se funcionário existe e capturar estado anterior de acessos.Console
     const funcionarioExistente = await QualidadeFuncionario.findById(id);
     if (!funcionarioExistente) {
       return res.status(404).json({
@@ -448,6 +698,9 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
         message: 'Funcionário não encontrado'
       });
     }
+    
+    // Capturar estado anterior de acessos.Console para comparação
+    const consoleAcessoAnterior = funcionarioExistente.acessos && funcionarioExistente.acessos.Console === true;
     
     // Converter datas se fornecidas como strings
     const updateData = { ...req.body };
@@ -464,11 +717,90 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
       updateData.dataAfastamento = new Date(updateData.dataAfastamento);
     }
     
+    // Processar novos campos opcionais
+    // CPF: já validado, apenas garantir trim
+    if (updateData.CPF !== undefined) {
+      if (updateData.CPF === null || updateData.CPF === '') {
+        updateData.CPF = null;
+      } else {
+        updateData.CPF = updateData.CPF.trim();
+      }
+    }
+    
+    // userMail: já validado, garantir lowercase e trim
+    if (updateData.userMail !== undefined) {
+      if (updateData.userMail === null || updateData.userMail === '') {
+        updateData.userMail = null;
+      } else {
+        updateData.userMail = updateData.userMail.toLowerCase().trim();
+      }
+    }
+    
+    // profile_pic: já validado, apenas garantir trim
+    if (updateData.profile_pic !== undefined) {
+      if (updateData.profile_pic === null || updateData.profile_pic === '') {
+        updateData.profile_pic = null;
+      } else {
+        updateData.profile_pic = updateData.profile_pic.trim();
+      }
+    }
+    
+    // Normalizar formato de acessos (converter array para objeto se necessário)
+    if (updateData.acessos !== undefined) {
+      if (updateData.acessos === null || updateData.acessos === '') {
+        updateData.acessos = null;
+      }
+      // Se está no formato antigo (array), converter para objeto booleano
+      else if (Array.isArray(updateData.acessos)) {
+        const novoAcessos = {};
+        updateData.acessos.forEach(acesso => {
+          if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
+            novoAcessos.Velohub = true;
+          }
+          if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
+            novoAcessos.Console = true;
+          }
+        });
+        // Apenas definir acessos se houver pelo menos um valor true
+        updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+      }
+      // Se está no formato novo (objeto), garantir que apenas Velohub e Console existam
+      else if (typeof updateData.acessos === 'object') {
+        const novoAcessos = {};
+        if (updateData.acessos.Velohub === true) {
+          novoAcessos.Velohub = true;
+        }
+        if (updateData.acessos.Console === true) {
+          novoAcessos.Console = true;
+        }
+        // Apenas definir acessos se houver pelo menos um valor true
+        updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+      }
+    }
+    // Se acessos não foi fornecido no update, não alterar o valor existente
+    
     const funcionarioAtualizado = await QualidadeFuncionario.findByIdAndUpdate(
       id,
       updateData,
       { new: true, runValidators: true }
     );
+    
+    // Sincronizar com config baseado na mudança de acessos.Console
+    const consoleAcessoNovo = funcionarioAtualizado.acessos && funcionarioAtualizado.acessos.Console === true;
+    
+    // Se mudou de false para true: criar usuário no config
+    // Se mudou de true para false: deletar usuário do config
+    // Se já era true e continua true: verificar se existe, criar se não existir
+    if (consoleAcessoNovo !== consoleAcessoAnterior || (consoleAcessoNovo === true && consoleAcessoAnterior === true)) {
+      try {
+        const syncResult = await syncUserToConfig(funcionarioAtualizado, consoleAcessoNovo);
+        if (!syncResult.success && syncResult.action !== 'skipped') {
+          console.warn(`⚠️ [QUALIDADE-FUNCIONARIOS] Falha na sincronização com config (não impede atualização): ${syncResult.message}`);
+        }
+      } catch (syncError) {
+        console.error(`❌ [QUALIDADE-FUNCIONARIOS] Erro na sincronização com config (não impede atualização):`, syncError);
+      }
+    }
     
     res.json({
       success: true,

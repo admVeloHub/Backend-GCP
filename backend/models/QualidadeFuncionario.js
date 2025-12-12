@@ -1,9 +1,9 @@
-// VERSION: v1.8.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
 
-// Schema para acessos dos funcionários
+// Schema para acessos dos funcionários (FORMATO ANTIGO - mantido para compatibilidade)
 const acessoSchema = new mongoose.Schema({
   sistema: {
     type: String,
@@ -34,6 +34,24 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  CPF: {
+    type: String,
+    default: null,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Opcional
+        // CPF deve ter 11 dígitos, sem pontos ou traços
+        return /^\d{11}$/.test(v);
+      },
+      message: 'CPF deve conter exatamente 11 dígitos numéricos'
+    }
+  },
+  profile_pic: {
+    type: String,
+    default: null,
+    trim: true
+  },
   empresa: {
     type: String,
     required: true,
@@ -47,6 +65,24 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
     type: String,
     default: '',
     trim: true
+  },
+  userMail: {
+    type: String,
+    default: null,
+    trim: true,
+    lowercase: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Opcional
+        // Validação básica de email
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+      },
+      message: 'Email inválido'
+    }
+  },
+  password: {
+    type: String,
+    default: null
   },
   atuacao: {
     type: mongoose.Schema.Types.Mixed, // Suporta String (antigo) e Array de ObjectIds (novo)
@@ -68,7 +104,37 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
     default: '',
     trim: true
   },
-  acessos: [acessoSchema],
+  // Campo acessos suporta ambos os formatos durante transição
+  // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
+  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean}
+  acessos: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Opcional
+        
+        // Formato novo: objeto com Velohub e/ou Console (booleanos)
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          const keys = Object.keys(v);
+          const validKeys = ['Velohub', 'Console'];
+          return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
+        }
+        
+        // Formato antigo: array de objetos
+        if (Array.isArray(v)) {
+          return v.every(item => 
+            typeof item === 'object' && 
+            item.sistema && 
+            item.perfil
+          );
+        }
+        
+        return false;
+      },
+      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean} ou array de objetos [{sistema, perfil, ...}]'
+    }
+  },
   desligado: {
     type: Boolean,
     default: false
@@ -107,11 +173,71 @@ qualidadeFuncionarioSchema.pre('findOneAndUpdate', function(next) {
   next();
 });
 
+// Função helper para normalizar formato de acessos (compatibilidade durante transição)
+qualidadeFuncionarioSchema.methods.normalizeAcessos = function() {
+  if (!this.acessos) {
+    return null;
+  }
+  
+  // Se já está no formato novo (objeto booleano), retornar como está
+  if (typeof this.acessos === 'object' && !Array.isArray(this.acessos)) {
+    return this.acessos;
+  }
+  
+  // Se está no formato antigo (array), converter para objeto booleano
+  if (Array.isArray(this.acessos)) {
+    const novoAcessos = {};
+    this.acessos.forEach(acesso => {
+      if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
+        novoAcessos.Velohub = true;
+      }
+      if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
+        novoAcessos.Console = true;
+      }
+    });
+    // Retornar objeto vazio se não houver correspondências, ou null se array vazio
+    return Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+  }
+  
+  return null;
+};
+
+// Método estático para normalizar acessos em documentos
+qualidadeFuncionarioSchema.statics.normalizeAcessosFormat = function(acessos) {
+  if (!acessos) {
+    return null;
+  }
+  
+  // Se já está no formato novo (objeto booleano), retornar como está
+  if (typeof acessos === 'object' && !Array.isArray(acessos)) {
+    return acessos;
+  }
+  
+  // Se está no formato antigo (array), converter para objeto booleano
+  if (Array.isArray(acessos)) {
+    const novoAcessos = {};
+    acessos.forEach(acesso => {
+      if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
+        novoAcessos.Velohub = true;
+      }
+      if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
+        novoAcessos.Console = true;
+      }
+    });
+    // Retornar objeto vazio se não houver correspondências, ou null se array vazio
+    return Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+  }
+  
+  return null;
+};
+
 // Índices para otimização de consultas
 qualidadeFuncionarioSchema.index({ colaboradorNome: 1 });
 qualidadeFuncionarioSchema.index({ empresa: 1 });
 qualidadeFuncionarioSchema.index({ desligado: 1, afastado: 1 });
 qualidadeFuncionarioSchema.index({ createdAt: -1 });
+qualidadeFuncionarioSchema.index({ CPF: 1 }, { unique: true, sparse: true }); // Índice único esparso (apenas para CPFs definidos)
+qualidadeFuncionarioSchema.index({ userMail: 1 }, { unique: true, sparse: true }); // Índice único esparso (apenas para emails definidos)
 
 // Modelo - criado com lazy loading
 let QualidadeFuncionarioModel = null;

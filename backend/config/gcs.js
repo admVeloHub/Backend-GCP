@@ -1,4 +1,4 @@
-// VERSION: v1.6.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { Storage } = require('@google-cloud/storage');
 const { PubSub } = require('@google-cloud/pubsub');
 
@@ -423,12 +423,14 @@ const configureBucketImagesCORS = async (allowedOrigins = null) => {
     }
     
     // Origens padrão se não fornecidas
+    // IMPORTANTE: Incluir todas as origens possíveis do frontend
     const origins = allowedOrigins || [
       'https://console-v2-hfsqj6konq-ue.a.run.app',
       'https://console-v2-278491073220.us-east1.run.app',
       'http://localhost:3000',
       'http://localhost:5173',
-      'http://localhost:8080'
+      'http://localhost:8080',
+      '*' // Permitir todas as origens para uploads diretos (necessário para CORS do GCS)
     ];
     
     // Configuração CORS

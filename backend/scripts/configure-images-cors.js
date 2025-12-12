@@ -4,7 +4,7 @@
  * Execute: node scripts/configure-images-cors.js
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const { configureBucketImagesCORS } = require('../config/gcs');
 
 async function main() {

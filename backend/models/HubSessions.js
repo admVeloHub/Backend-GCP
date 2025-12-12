@@ -1,6 +1,22 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
+/**
+ * Schema: console_conteudo.hub_sessions
+ * {
+ *   _id: ObjectId,
+ *   colaboradorNome: String,           // Nome do colaborador
+ *   userEmail: String,                 // Email do usuário
+ *   sessionId: String,                 // ID único da sessão (UUID)
+ *   ipAddress: String,                 // IP do usuário (opcional)
+ *   userAgent: String,                 // Navegador/dispositivo (opcional)
+ *   isActive: Boolean,                 // Se a sessão está ativa
+ *   loginTimestamp: Date,              // Data/hora do login
+ *   logoutTimestamp: Date,             // Data/hora do logout (null se ativo)
+ *   createdAt: Date,                  // Data de criação
+ *   updatedAt: Date                    // Data de atualização
+ * }
+ */
 class HubSessions {
   constructor() {
     this.collectionName = 'hub_sessions';

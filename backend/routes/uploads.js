@@ -1,8 +1,8 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { uploadImage, generateImageUploadSignedUrl, validateFileType, validateFileSize } = require('../config/gcs');
+const { uploadImage, generateImageUploadSignedUrl, validateFileType, validateFileSize, configureBucketImagesCORS, getBucketCORS } = require('../config/gcs');
 
 // Configurar multer para upload de arquivos em memória
 const upload = multer({
@@ -160,6 +160,77 @@ router.post('/generate-upload-url', async (req, res) => {
       success: false,
       error: 'Erro ao gerar URL de upload',
       message: error.message || 'Erro desconhecido ao gerar URL de upload'
+    });
+  }
+});
+
+// POST /api/uploads/configure-images-cors - Configurar CORS no bucket de imagens do GCS
+router.post('/configure-images-cors', async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'Entrada recebida - POST /api/uploads/configure-images-cors');
+    global.emitLog('info', 'POST /api/uploads/configure-images-cors - Configurando CORS no bucket de imagens');
+
+    const { allowedOrigins } = req.body;
+    
+    // Configurar CORS
+    const corsConfig = await configureBucketImagesCORS(allowedOrigins);
+
+    global.emitTraffic('Uploads', 'completed', 'CORS configurado com sucesso');
+    global.emitLog('success', 'POST /api/uploads/configure-images-cors - CORS configurado com sucesso');
+
+    res.json({
+      success: true,
+      message: 'Configuração CORS aplicada com sucesso',
+      corsConfig
+    });
+  } catch (error) {
+    global.emitTraffic('Uploads', 'error', 'Erro ao configurar CORS');
+    global.emitLog('error', `POST /api/uploads/configure-images-cors - Erro: ${error.message}`);
+    console.error('❌ Erro ao configurar CORS no bucket de imagens:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao configurar CORS no bucket de imagens',
+      message: error.message || 'Erro desconhecido ao configurar CORS'
+    });
+  }
+});
+
+// GET /api/uploads/images-cors-config - Obter configuração CORS atual do bucket de imagens
+router.get('/images-cors-config', async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'Entrada recebida - GET /api/uploads/images-cors-config');
+    global.emitLog('info', 'GET /api/uploads/images-cors-config - Obtendo configuração CORS');
+
+    const { getBucketImages } = require('../config/gcs');
+    const bucket = getBucketImages();
+    
+    if (!bucket) {
+      return res.status(500).json({
+        success: false,
+        error: 'Bucket de imagens não está disponível'
+      });
+    }
+
+    const [metadata] = await bucket.getMetadata();
+    const corsConfig = metadata.cors || [];
+
+    global.emitTraffic('Uploads', 'completed', 'Configuração CORS obtida');
+    global.emitLog('success', 'GET /api/uploads/images-cors-config - Configuração CORS obtida');
+
+    res.json({
+      success: true,
+      corsConfig
+    });
+  } catch (error) {
+    global.emitTraffic('Uploads', 'error', 'Erro ao obter configuração CORS');
+    global.emitLog('error', `GET /api/uploads/images-cors-config - Erro: ${error.message}`);
+    console.error('❌ Erro ao obter configuração CORS:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao obter configuração CORS',
+      message: error.message || 'Erro desconhecido ao obter configuração CORS'
     });
   }
 });
