@@ -1,5 +1,6 @@
-// VERSION: v5.8.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v5.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.9.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}. Acessos são completamente opcionais - permitido salvar funcionários mesmo com todos os acessos como false ou null.
 // v5.8.0 - Implementada sincronização automática entre qualidade_funcionarios.acessos.Console e console_config.users. Quando Console=true, cria usuário no config. Quando Console=false, remove usuário do config.
 // v5.7.0 - Adicionados novos campos ao schema qualidade_funcionarios: CPF, profile_pic, userMail, password. Campo acessos alterado de array para objeto booleano {Velohub: Boolean, Console: Boolean} sem valores padrão true.
 // v5.6.0 - Deprecados endpoints POST/PUT/DELETE de qualidade_avaliacoes_gpt. Retornam erro 410 com mensagem de migração para audio_analise_results.
@@ -278,16 +279,16 @@ const validateFuncionario = (req, res, next) => {
   
   // Validação de acessos - garantir que não receba valores padrão true
   if (acessos !== undefined && acessos !== null) {
-    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean}
+    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
     if (typeof acessos === 'object' && !Array.isArray(acessos)) {
-      const validKeys = ['Velohub', 'Console', 'Academy'];
+      const validKeys = ['Velohub', 'Console', 'Academy', 'Desk'];
       const keys = Object.keys(acessos);
       
       // Verificar se todas as chaves são válidas
       if (!keys.every(key => validKeys.includes(key))) {
         return res.status(400).json({
           success: false,
-          message: 'Acessos deve conter apenas as chaves Velohub, Console e/ou Academy'
+          message: 'Acessos deve conter apenas as chaves Velohub, Console, Academy e/ou Desk'
         });
       }
       
@@ -494,7 +495,7 @@ const validateAvaliacaoGPT = (req, res, next) => {
 const normalizarAcessosParaResposta = (acessos) => {
   // Se for null ou undefined, retornar objeto vazio
   if (!acessos) {
-    return { Velohub: false, Console: false, Academy: false };
+    return { Velohub: false, Console: false, Academy: false, Desk: false };
   }
   
   // Se já for objeto booleano, garantir que tenha todas as chaves
@@ -502,13 +503,14 @@ const normalizarAcessosParaResposta = (acessos) => {
     return {
       Velohub: acessos.Velohub === true,
       Console: acessos.Console === true,
-      Academy: acessos.Academy === true
+      Academy: acessos.Academy === true,
+      Desk: acessos.Desk === true
     };
   }
   
   // Se for array (formato antigo), converter para objeto booleano
   if (Array.isArray(acessos)) {
-    const novoAcessos = { Velohub: false, Console: false, Academy: false };
+    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false };
     acessos.forEach(acesso => {
       if (acesso && acesso.sistema) {
         const sistema = acesso.sistema.toLowerCase();
@@ -518,6 +520,8 @@ const normalizarAcessosParaResposta = (acessos) => {
           novoAcessos.Console = true;
         } else if (sistema === 'academy') {
           novoAcessos.Academy = true;
+        } else if (sistema === 'desk') {
+          novoAcessos.Desk = true;
         }
       }
     });
@@ -525,7 +529,7 @@ const normalizarAcessosParaResposta = (acessos) => {
   }
   
   // Fallback: objeto vazio
-  return { Velohub: false, Console: false, Academy: false };
+  return { Velohub: false, Console: false, Academy: false, Desk: false };
 };
 
 // GET /api/qualidade/funcionarios - Listar todos os funcionários
