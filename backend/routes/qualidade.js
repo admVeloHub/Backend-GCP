@@ -1,6 +1,7 @@
-// VERSION: v5.9.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v5.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
-// v5.9.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}. Acessos são completamente opcionais - permitido salvar funcionários mesmo com todos os acessos como false ou null.
+// v5.10.0 - Garantido que acessos sempre seja um objeto booleano completo {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}, nunca null. Quando desligado=true ou afastado=true, acessos é automaticamente definido como objeto com todos false. Quando nenhum acesso está marcado, retorna objeto com todos false.
+// v5.9.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}. Acessos são completamente opcionais - permitido salvar funcionários mesmo com todos os acessos como false.
 // v5.8.0 - Implementada sincronização automática entre qualidade_funcionarios.acessos.Console e console_config.users. Quando Console=true, cria usuário no config. Quando Console=false, remove usuário do config.
 // v5.7.0 - Adicionados novos campos ao schema qualidade_funcionarios: CPF, profile_pic, userMail, password. Campo acessos alterado de array para objeto booleano {Velohub: Boolean, Console: Boolean} sem valores padrão true.
 // v5.6.0 - Deprecados endpoints POST/PUT/DELETE de qualidade_avaliacoes_gpt. Retornam erro 410 com mensagem de migração para audio_analise_results.
@@ -687,27 +688,36 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
             novoAcessos.Academy = true;
           }
+          if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
+            novoAcessos.Desk = true;
+          }
         });
-        // Apenas definir acessos se houver pelo menos um valor true
-        funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+        // Sempre retornar objeto booleano completo
+        funcionarioData.acessos = {
+          Velohub: novoAcessos.Velohub === true,
+          Console: novoAcessos.Console === true,
+          Academy: novoAcessos.Academy === true,
+          Desk: novoAcessos.Desk === true
+        };
       }
-      // Se está no formato novo (objeto), garantir que apenas Velohub, Console e Academy existam
+      // Se está no formato novo (objeto), garantir que tenha todas as chaves
       else if (typeof funcionarioData.acessos === 'object') {
-        const novoAcessos = {};
-        if (funcionarioData.acessos.Velohub === true) {
-          novoAcessos.Velohub = true;
-        }
-        if (funcionarioData.acessos.Console === true) {
-          novoAcessos.Console = true;
-        }
-        if (funcionarioData.acessos.Academy === true) {
-          novoAcessos.Academy = true;
-        }
-        // Apenas definir acessos se houver pelo menos um valor true
-        funcionarioData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+        funcionarioData.acessos = {
+          Velohub: funcionarioData.acessos.Velohub === true,
+          Console: funcionarioData.acessos.Console === true,
+          Academy: funcionarioData.acessos.Academy === true,
+          Desk: funcionarioData.acessos.Desk === true
+        };
       }
+    } else {
+      // Se acessos não foi fornecido, definir como objeto com todos false
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
     }
-    // Se acessos não foi fornecido, não definir (null/undefined) - NÃO definir valores padrão true
+    
+    // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
+    if (funcionarioData.desligado || funcionarioData.afastado) {
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+    }
     
     // Gerar hash de senha padrão se não fornecido (primeiroNome.ultimoNomeCPF)
     if (!funcionarioData.password && funcionarioData.colaboradorNome && funcionarioData.CPF) {
@@ -821,7 +831,8 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
     // Normalizar formato de acessos (converter array para objeto se necessário)
     if (updateData.acessos !== undefined) {
       if (updateData.acessos === null || updateData.acessos === '') {
-        updateData.acessos = null;
+        // Se explicitamente null ou vazio, converter para objeto com todos false
+        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
       }
       // Se está no formato antigo (array), converter para objeto booleano
       else if (Array.isArray(updateData.acessos)) {
@@ -836,25 +847,32 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
             novoAcessos.Academy = true;
           }
+          if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
+            novoAcessos.Desk = true;
+          }
         });
-        // Apenas definir acessos se houver pelo menos um valor true
-        updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+        // Sempre retornar objeto booleano completo
+        updateData.acessos = {
+          Velohub: novoAcessos.Velohub === true,
+          Console: novoAcessos.Console === true,
+          Academy: novoAcessos.Academy === true,
+          Desk: novoAcessos.Desk === true
+        };
       }
-      // Se está no formato novo (objeto), garantir que apenas Velohub, Console e Academy existam
+      // Se está no formato novo (objeto), garantir que tenha todas as chaves
       else if (typeof updateData.acessos === 'object') {
-        const novoAcessos = {};
-        if (updateData.acessos.Velohub === true) {
-          novoAcessos.Velohub = true;
-        }
-        if (updateData.acessos.Console === true) {
-          novoAcessos.Console = true;
-        }
-        if (updateData.acessos.Academy === true) {
-          novoAcessos.Academy = true;
-        }
-        // Apenas definir acessos se houver pelo menos um valor true
-        updateData.acessos = Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
+        updateData.acessos = {
+          Velohub: updateData.acessos.Velohub === true,
+          Console: updateData.acessos.Console === true,
+          Academy: updateData.acessos.Academy === true,
+          Desk: updateData.acessos.Desk === true
+        };
       }
+    }
+    
+    // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
+    if (updateData.desligado || updateData.afastado) {
+      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
     }
     // Se acessos não foi fornecido no update, não alterar o valor existente
     

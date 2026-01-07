@@ -197,6 +197,13 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // #region agent log
+    const fs = require('fs');
+    const logPath = 'c:\\DEV - Ecosistema Velohub\\EXP- Console GCP\\.cursor\\debug.log';
+    const logEntry = JSON.stringify({location:'velonews.js:198',message:'DELETE route - ID recebido do params',data:{id:id,idType:typeof id,idLength:id?.length,params:req.params,url:req.url,method:req.method},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'}) + '\n';
+    fs.appendFileSync(logPath, logEntry);
+    // #endregion
+    
     global.emitTraffic('Velonews', 'received', `Entrada recebida - DELETE /api/velonews/${id}`);
     global.emitLog('info', `DELETE /api/velonews/${id} - Deletando velonews`);
     
@@ -205,6 +212,11 @@ router.delete('/:id', async (req, res) => {
     
     global.emitTraffic('Velonews', 'processing', 'Transmitindo para DB');
     const result = await Velonews.delete(id);
+    
+    // #region agent log
+    const logEntry2 = JSON.stringify({location:'velonews.js:207',message:'DELETE route - Resultado do Velonews.delete',data:{result:result,success:result?.success,error:result?.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+    fs.appendFileSync(logPath, logEntry2);
+    // #endregion
     
     if (result.success) {
       global.emitTraffic('Velonews', 'completed', 'Concluído - Velonews deletada com sucesso');

@@ -133,10 +133,35 @@ class Velonews {
   // Deletar velonews
   async delete(id) {
     try {
+      // #region agent log
+      const fs = require('fs');
+      const logPath = 'c:\\DEV - Ecosistema Velohub\\EXP- Console GCP\\.cursor\\debug.log';
+      const logEntry = JSON.stringify({location:'Velonews.js:136',message:'Velonews.delete - ID recebido antes de converter ObjectId',data:{id:id,idType:typeof id,idLength:id?.length,isValidFormat:/^[0-9a-fA-F]{24}$/.test(id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+      fs.appendFileSync(logPath, logEntry);
+      // #endregion
+      
       const collection = this.getCollection();
       const { ObjectId } = require('mongodb');
       
+      // #region agent log
+      let objectIdConverted = null;
+      try {
+        objectIdConverted = new ObjectId(id);
+        const logEntry2 = JSON.stringify({location:'Velonews.js:139',message:'Velonews.delete - ObjectId convertido com sucesso',data:{id:id,objectIdString:objectIdConverted.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+        fs.appendFileSync(logPath, logEntry2);
+      } catch (objIdError) {
+        const logEntry3 = JSON.stringify({location:'Velonews.js:139',message:'Velonews.delete - ERRO ao converter ObjectId',data:{id:id,error:objIdError.message,errorStack:objIdError.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+        fs.appendFileSync(logPath, logEntry3);
+        throw objIdError;
+      }
+      // #endregion
+      
       const result = await collection.deleteOne({ _id: new ObjectId(id) });
+      
+      // #region agent log
+      const logEntry4 = JSON.stringify({location:'Velonews.js:140',message:'Velonews.delete - Resultado do deleteOne',data:{deletedCount:result.deletedCount,matchedCount:result.matchedCount,acknowledged:result.acknowledged},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+      fs.appendFileSync(logPath, logEntry4);
+      // #endregion
 
       if (result.deletedCount === 0) {
         return {
@@ -150,6 +175,12 @@ class Velonews {
         message: 'Velonews deletada com sucesso'
       };
     } catch (error) {
+      // #region agent log
+      const fs = require('fs');
+      const logPath = 'c:\\DEV - Ecosistema Velohub\\EXP- Console GCP\\.cursor\\debug.log';
+      const logEntry = JSON.stringify({location:'Velonews.js:153',message:'Velonews.delete - ERRO capturado no catch',data:{id:id,errorMessage:error.message,errorName:error.name,errorStack:error.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'}) + '\n';
+      fs.appendFileSync(logPath, logEntry);
+      // #endregion
       console.error('Erro ao deletar velonews:', error);
       return {
         success: false,
