@@ -107,12 +107,14 @@ const sectionSchema = new mongoose.Schema({
   },
   lessons: {
     type: [lessonSchema],
-    required: [true, 'Seção deve ter pelo menos uma aula'],
+    required: false, // Permitir temas sem aulas inicialmente
+    default: [], // Array vazio por padrão
     validate: {
       validator: function(v) {
-        return v && v.length > 0;
+        // Permite array vazio para temas recém-criados
+        return Array.isArray(v);
       },
-      message: 'Seção deve ter pelo menos uma aula'
+      message: 'Lessons deve ser um array'
     }
   }
 }, { _id: false });
@@ -135,12 +137,14 @@ const moduleSchema = new mongoose.Schema({
   },
   sections: {
     type: [sectionSchema],
-    required: [true, 'Módulo deve ter pelo menos uma seção'],
+    required: false, // Permitir módulos sem seções inicialmente
+    default: [], // Array vazio por padrão
     validate: {
       validator: function(v) {
-        return v && v.length > 0;
+        // Permite array vazio para módulos recém-criados
+        return Array.isArray(v);
       },
-      message: 'Módulo deve ter pelo menos uma seção'
+      message: 'Sections deve ser um array'
     }
   }
 }, { _id: false });
@@ -177,12 +181,15 @@ const cursosConteudoSchema = new mongoose.Schema({
   },
   modules: {
     type: [moduleSchema],
-    required: [true, 'Curso deve ter pelo menos um módulo'],
+    required: false, // Permitir cursos sem módulos inicialmente
+    default: [], // Array vazio por padrão
     validate: {
       validator: function(v) {
-        return v && v.length > 0;
+        // Se houver módulos, cada um deve ter pelo menos uma seção válida
+        // Mas permite array vazio para cursos recém-criados
+        return Array.isArray(v);
       },
-      message: 'Curso deve ter pelo menos um módulo'
+      message: 'Modules deve ser um array'
     }
   },
   createdBy: {

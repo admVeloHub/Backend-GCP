@@ -160,12 +160,12 @@ router.post('/', async (req, res) => {
     
     const { cursoClasse, cursoNome, cursoDescription, courseOrder, isActive, modules, createdBy, version } = req.body;
     
-    if (!cursoClasse || !cursoNome || !courseOrder || !modules || !createdBy) {
+    if (!cursoClasse || !cursoNome || !courseOrder || !createdBy) {
       global.emitTraffic('CursosConteudo', 'error', 'Dados obrigatórios ausentes');
-      global.emitLog('error', 'POST /api/academy/cursos-conteudo - cursoClasse, cursoNome, courseOrder, modules e createdBy são obrigatórios');
+      global.emitLog('error', 'POST /api/academy/cursos-conteudo - cursoClasse, cursoNome, courseOrder e createdBy são obrigatórios');
       return res.status(400).json({ 
         success: false, 
-        error: 'cursoClasse, cursoNome, courseOrder, modules e createdBy são obrigatórios' 
+        error: 'cursoClasse, cursoNome, courseOrder e createdBy são obrigatórios' 
       });
     }
 
@@ -174,7 +174,7 @@ router.post('/', async (req, res) => {
       cursoNome,
       courseOrder,
       isActive: isActive !== undefined ? isActive : true,
-      modules,
+      modules: modules || [], // Permitir array vazio para cursos sem módulos
       createdBy,
       version: version || 1
     };
