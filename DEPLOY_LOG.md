@@ -4,6 +4,34 @@
 
 **Data/Hora:** 2025-01-30  
 **Tipo:** GitHub Push  
+**Versão:** v1.2.0 (cloudbuild.yaml)  
+**Repositório:** admVeloHub/back-skynet  
+**Branch:** main → master  
+
+### Descrição:
+Correção do cloudbuild.yaml para deploy no serviço correto:
+- Atualizado nome do serviço de `backend-api` para `staging-skynet`
+- Atualizada região de `us-central1` para `us-east1`
+- Atualizadas tags de imagem para `staging-skynet`
+- Cloud Build agora faz deploy no serviço correto configurado no GCP
+
+### Arquivos Modificados:
+- `cloudbuild.yaml` (v1.1.0 → v1.2.0) - Serviço e região corrigidos
+
+### Problema Resolvido:
+- ❌ Cloud Build fazia deploy em `backend-api` (us-central1) ao invés de `staging-skynet` (us-east1)
+- ❌ Serviço `staging-skynet` não recebia atualizações do Cloud Build
+- ✅ cloudbuild.yaml agora aponta para o serviço correto
+- ✅ Deploy será feito na região correta (us-east1)
+
+### Status: ✅ Pronto para Push
+
+---
+
+## GitHub Push - 2025-01-30
+
+**Data/Hora:** 2025-01-30  
+**Tipo:** GitHub Push  
 **Versão:** v4.16.0 (server.js), v1.3.0 (whatsapp.js), v1.2.0 (sociais.js, geminiService.js), v1.2.0 (Dockerfile)  
 **Repositório:** admVeloHub/back-skynet  
 **Branch:** main → master  

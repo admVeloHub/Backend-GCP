@@ -1,4 +1,4 @@
-# VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+# VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 # Cloud Build configuration para deploy no Cloud Run
 
 steps:
@@ -7,9 +7,9 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/backend-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/backend-api:latest'
+      - 'gcr.io/$PROJECT_ID/staging-skynet:latest'
       - '-f'
       - 'Dockerfile'
       - '.'
@@ -18,12 +18,12 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/backend-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/backend-api:latest'
+      - 'gcr.io/$PROJECT_ID/staging-skynet:latest'
 
   # Deploy no Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -31,11 +31,11 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'backend-api'
+      - 'staging-skynet'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/backend-api:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
       - '--region'
-      - 'us-central1'
+      - 'us-east1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -52,8 +52,8 @@ steps:
 
 # Imagens a serem armazenadas no Container Registry
 images:
-  - 'gcr.io/$PROJECT_ID/backend-api:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/backend-api:latest'
+  - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/staging-skynet:latest'
 
 # Timeout do build (10 minutos)
 timeout: '600s'
@@ -62,4 +62,3 @@ timeout: '600s'
 options:
   machineType: 'E2_HIGHCPU_8'
   logging: CLOUD_LOGGING_ONLY
-
