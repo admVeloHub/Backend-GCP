@@ -1,4 +1,4 @@
-// VERSION: v4.12.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.13.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -145,6 +145,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Rota para favicon
 app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Content-Type', 'image/x-icon');
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
   res.status(204).end();
 });
 
@@ -259,6 +261,17 @@ app.get('/events', (req, res) => {
 
   // Mensagem inicial
   sendSSEEvent(res, { message: 'Conectado ao Monitor Skynet via SSE' }, 'connected');
+});
+
+// Rota catch-all para rotas não encontradas (deve vir ANTES do error handler)
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Rota não encontrada',
+    path: req.path,
+    method: req.method,
+    message: 'A rota solicitada não existe nesta API'
+  });
 });
 
 // Error handling
