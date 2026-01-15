@@ -1,4 +1,4 @@
-// VERSION: v4.14.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.15.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -8,16 +8,29 @@ try {
 }
 
 // Tratamento de erros não capturados
+// IMPORTANTE: Não fazer exit(1) imediatamente para permitir que servidor escute na porta
+let serverStarted = false;
+
 process.on('uncaughtException', (error) => {
   console.error('❌ Erro não capturado (uncaughtException):', error);
   console.error('❌ Stack trace:', error.stack);
-  process.exit(1);
+  // Só fazer exit se servidor já iniciou (após timeout para Cloud Run)
+  if (serverStarted) {
+    setTimeout(() => process.exit(1), 5000);
+  } else {
+    console.error('⚠️ Erro antes do servidor iniciar, mas continuando...');
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Promise rejeitada não tratada (unhandledRejection):', reason);
   console.error('❌ Promise:', promise);
-  process.exit(1);
+  // Só fazer exit se servidor já iniciou
+  if (serverStarted) {
+    setTimeout(() => process.exit(1), 5000);
+  } else {
+    console.error('⚠️ Promise rejeitada antes do servidor iniciar, mas continuando...');
+  }
 });
 
 const express = require('express');
@@ -330,8 +343,9 @@ const startServer = async () => {
   // Iniciar servidor PRIMEIRO para garantir que escute na porta (requisito do Cloud Run)
   console.log(`🔄 Iniciando servidor HTTP na porta ${PORT}...`);
   server.listen(PORT, '0.0.0.0', async () => {
+    serverStarted = true; // Marcar que servidor iniciou
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📊 Console de Conteúdo VeloHub v4.14.0`);
+    console.log(`📊 Console de Conteúdo VeloHub v4.15.0`);
     console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
     console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
