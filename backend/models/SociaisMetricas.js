@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const { getSociaisDatabase } = require('../config/database');
 
 class SociaisMetricas {
@@ -384,6 +384,117 @@ class SociaisMetricas {
       };
     } catch (error) {
       console.error('Erro ao obter dados de gráficos:', error);
+      return {
+        success: false,
+        error: 'Erro interno do servidor'
+      };
+    }
+  }
+
+  // Obter média de ratings
+  async getAverageRating(filters = {}) {
+    try {
+      const collection = this.getCollection();
+      
+      // Construir query de filtros (mesmo padrão do getAll)
+      const query = {};
+      
+      if (filters.socialNetwork && Array.isArray(filters.socialNetwork) && filters.socialNetwork.length > 0) {
+        query.socialNetwork = { $in: filters.socialNetwork };
+      }
+      
+      if (filters.contactReason && Array.isArray(filters.contactReason) && filters.contactReason.length > 0) {
+        query.contactReason = { $in: filters.contactReason };
+      }
+      
+      if (filters.dateFrom || filters.dateTo) {
+        query.createdAt = {};
+        if (filters.dateFrom) {
+          query.createdAt.$gte = new Date(filters.dateFrom);
+        }
+        if (filters.dateTo) {
+          const dateTo = new Date(filters.dateTo);
+          dateTo.setHours(23, 59, 59, 999);
+          query.createdAt.$lte = dateTo;
+        }
+      }
+      
+      // Filtrar apenas registros com rating válido (não-nulo e entre 1-5)
+      query.rating = { $exists: true, $ne: null, $gte: 1, $lte: 5 };
+      
+      // Pipeline de agregação para calcular média geral e distribuição
+      const ratingStats = await collection.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            averageRating: { $avg: '$rating' },
+            totalRatings: { $sum: 1 },
+            rating1: { $sum: { $cond: [{ $eq: ['$rating', 1] }, 1, 0] } },
+            rating2: { $sum: { $cond: [{ $eq: ['$rating', 2] }, 1, 0] } },
+            rating3: { $sum: { $cond: [{ $eq: ['$rating', 3] }, 1, 0] } },
+            rating4: { $sum: { $cond: [{ $eq: ['$rating', 4] }, 1, 0] } },
+            rating5: { $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] } }
+          }
+        }
+      ]).toArray();
+      
+      // Pipeline para calcular média por rede social
+      const averageByNetwork = await collection.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: '$socialNetwork',
+            average: { $avg: '$rating' },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]).toArray();
+      
+      // Processar resultados
+      let averageRating = 0;
+      let totalRatings = 0;
+      const ratingDistribution = {
+        '1': 0,
+        '2': 0,
+        '3': 0,
+        '4': 0,
+        '5': 0
+      };
+      
+      if (ratingStats.length > 0 && ratingStats[0].totalRatings > 0) {
+        const stats = ratingStats[0];
+        averageRating = parseFloat(stats.averageRating.toFixed(2));
+        totalRatings = stats.totalRatings;
+        ratingDistribution['1'] = stats.rating1;
+        ratingDistribution['2'] = stats.rating2;
+        ratingDistribution['3'] = stats.rating3;
+        ratingDistribution['4'] = stats.rating4;
+        ratingDistribution['5'] = stats.rating5;
+      }
+      
+      const averageByNetworkFormatted = averageByNetwork.map(item => ({
+        socialNetwork: item._id,
+        average: parseFloat(item.average.toFixed(2)),
+        count: item.count
+      }));
+      
+      return {
+        success: true,
+        data: {
+          averageRating,
+          totalRatings,
+          ratingDistribution,
+          averageByNetwork: averageByNetworkFormatted,
+          period: {
+            from: filters.dateFrom || null,
+            to: filters.dateTo || null
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Erro ao calcular média de ratings:', error);
       return {
         success: false,
         error: 'Erro interno do servidor'

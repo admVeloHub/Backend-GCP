@@ -4,6 +4,38 @@
 
 **Data/Hora:** 2025-01-30  
 **Tipo:** GitHub Push  
+**Versão:** v1.1.0 (SociaisMetricas.js), v1.3.0 (sociais.js)  
+**Repositório:** admVeloHub/back-skynet  
+**Branch:** main → master  
+
+### Descrição:
+Implementação de endpoint REST para cálculo de nota média baseada em ratings:
+- Criado método `getAverageRating()` no modelo SociaisMetricas para calcular média de ratings (1-5 estrelas)
+- Implementado endpoint GET `/api/sociais/rating/average` que aceita filtros de período (dateFrom/dateTo) e filtros opcionais (socialNetwork, contactReason)
+- Endpoint retorna média geral, total de avaliações, distribuição por rating e média por rede social
+- Utiliza agregação MongoDB para cálculos eficientes
+- Validação de período obrigatório (dateFrom e dateTo)
+
+### Arquivos Modificados:
+- `backend/models/SociaisMetricas.js` (v1.0.0 → v1.1.0) - Método getAverageRating() adicionado
+- `backend/routes/sociais.js` (v1.2.0 → v1.3.0) - Endpoint GET /api/sociais/rating/average adicionado
+
+### Funcionalidades:
+- ✅ Cálculo de média aritmética de ratings válidos (1-5)
+- ✅ Distribuição de ratings por valor (1 a 5)
+- ✅ Média calculada por rede social
+- ✅ Filtros por período (obrigatório) e rede social/motivo (opcional)
+- ✅ Tratamento de casos sem ratings (retorna 0)
+
+### Commit Hash: d4191aa
+### Status: ✅ Push Realizado com Sucesso
+
+---
+
+## GitHub Push - 2025-01-30
+
+**Data/Hora:** 2025-01-30  
+**Tipo:** GitHub Push  
 **Versão:** v1.2.0 (cloudbuild.yaml)  
 **Repositório:** admVeloHub/back-skynet  
 **Branch:** main → master  

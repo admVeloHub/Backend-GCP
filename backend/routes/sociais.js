@@ -1,4 +1,4 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const SociaisMetricas = require('../models/SociaisMetricas');
@@ -283,6 +283,65 @@ router.get('/feed', async (req, res) => {
   } catch (error) {
     global.emitTraffic('Sociais', 'error', 'Erro ao obter feed');
     global.emitLog('error', `GET /api/sociais/feed - Erro: ${error.message}`);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor' 
+    });
+  }
+});
+
+// GET /api/sociais/rating/average - Calcular nota média baseada em ratings
+router.get('/rating/average', async (req, res) => {
+  try {
+    global.emitTraffic('Sociais', 'received', 'Entrada recebida - GET /api/sociais/rating/average');
+    global.emitLog('info', 'GET /api/sociais/rating/average - Calculando nota média');
+    
+    // Validar que período é obrigatório
+    if (!req.query.dateFrom || !req.query.dateTo) {
+      global.emitTraffic('Sociais', 'error', 'Período não fornecido');
+      global.emitLog('error', 'GET /api/sociais/rating/average - dateFrom e dateTo são obrigatórios');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'dateFrom e dateTo são obrigatórios' 
+      });
+    }
+    
+    // Extrair filtros da query string
+    const filters = {};
+    
+    filters.dateFrom = req.query.dateFrom;
+    filters.dateTo = req.query.dateTo;
+    
+    if (req.query.socialNetwork) {
+      filters.socialNetwork = Array.isArray(req.query.socialNetwork) 
+        ? req.query.socialNetwork 
+        : [req.query.socialNetwork];
+    }
+    
+    if (req.query.contactReason) {
+      filters.contactReason = Array.isArray(req.query.contactReason) 
+        ? req.query.contactReason 
+        : [req.query.contactReason];
+    }
+    
+    global.emitTraffic('Sociais', 'processing', 'Calculando média de ratings');
+    const result = await SociaisMetricas.getAverageRating(filters);
+    
+    if (result.success) {
+      global.emitTraffic('Sociais', 'completed', 'Concluído - Média calculada com sucesso');
+      global.emitLog('success', `GET /api/sociais/rating/average - Média: ${result.data.averageRating}, Total: ${result.data.totalRatings}`);
+      
+      // INBOUND: Resposta para o frontend
+      global.emitJsonInput(result);
+      res.json(result);
+    } else {
+      global.emitTraffic('Sociais', 'error', result.error);
+      global.emitLog('error', `GET /api/sociais/rating/average - ${result.error}`);
+      res.status(500).json(result);
+    }
+  } catch (error) {
+    global.emitTraffic('Sociais', 'error', 'Erro interno do servidor');
+    global.emitLog('error', `GET /api/sociais/rating/average - Erro: ${error.message}`);
     res.status(500).json({ 
       success: false, 
       error: 'Erro interno do servidor' 
