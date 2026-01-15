@@ -1,4 +1,4 @@
-// VERSION: v4.13.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.14.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -327,69 +327,65 @@ global.broadcastAudioEvent = (audioId, status, data = {}) => {
 
 // Inicializar servidor
 const startServer = async () => {
-  try {
-    console.log('🔄 Iniciando servidor...');
-    console.log(`📋 PORT: ${PORT}`);
-    console.log(`📋 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📋 MONGO_ENV configurada: ${process.env.MONGO_ENV ? 'SIM' : 'NÃO'}`);
+  // Iniciar servidor PRIMEIRO para garantir que escute na porta (requisito do Cloud Run)
+  console.log(`🔄 Iniciando servidor HTTP na porta ${PORT}...`);
+  server.listen(PORT, '0.0.0.0', async () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📊 Console de Conteúdo VeloHub v4.14.0`);
+    console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
+    console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
     
-    // Conectar ao MongoDB
-    console.log('🔄 Conectando ao MongoDB...');
-    await connectToDatabase();
-    console.log('✅ MongoDB conectado via MongoClient');
-    
-    console.log('🔄 Inicializando collections...');
-    await initializeCollections();
-    console.log('✅ Collections inicializadas');
-    
-    // Configurar Mongoose
-    // MONGO_ENV deve ser configurada via variável de ambiente (secrets)
-    const { getMongoUri } = require('./config/mongodb');
-    const MONGODB_URI = getMongoUri();
-    
-    console.log('🔄 Conectando Mongoose...');
-    await mongoose.connect(MONGODB_URI, {
-      dbName: 'console_conteudo'
-    });
-    
-    console.log(`🗄️ MongoDB: Conectado`);
-    console.log(`📊 Collections: Inicializadas`);
-    console.log(`🔗 Mongoose: Conectado ao console_conteudo`);
-    
-    // Iniciar servidor
-    console.log(`🔄 Iniciando servidor HTTP na porta ${PORT}...`);
-    server.listen(PORT, async () => {
-      console.log(`🚀 Servidor rodando na porta ${PORT}`);
-      console.log(`📊 Console de Conteúdo VeloHub v4.2.0`);
-      console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
-      console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
+    // Conectar ao MongoDB após servidor iniciar (não crítico para startup)
+    try {
+      console.log('🔄 Conectando ao MongoDB...');
+      console.log(`📋 PORT: ${PORT}`);
+      console.log(`📋 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📋 MONGO_ENV configurada: ${process.env.MONGO_ENV ? 'SIM' : 'NÃO'}`);
       
-      // Inicializar serviço WhatsApp
-      try {
-        console.log('🔄 Inicializando serviço WhatsApp...');
-        await baileysService.initialize();
-        console.log('✅ Serviço WhatsApp inicializado');
-      } catch (error) {
-        console.error('⚠️ Erro ao inicializar WhatsApp (não crítico):', error.message);
-        console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');
-      }
-    });
+      await connectToDatabase();
+      console.log('✅ MongoDB conectado via MongoClient');
+      
+      console.log('🔄 Inicializando collections...');
+      await initializeCollections();
+      console.log('✅ Collections inicializadas');
+      
+      // Configurar Mongoose
+      const { getMongoUri } = require('./config/mongodb');
+      const MONGODB_URI = getMongoUri();
+      
+      console.log('🔄 Conectando Mongoose...');
+      await mongoose.connect(MONGODB_URI, {
+        dbName: 'console_conteudo'
+      });
+      
+      console.log(`🗄️ MongoDB: Conectado`);
+      console.log(`📊 Collections: Inicializadas`);
+      console.log(`🔗 Mongoose: Conectado ao console_conteudo`);
+    } catch (error) {
+      console.error('⚠️ Erro ao conectar MongoDB (não crítico):', error.message);
+      console.error('⚠️ Servidor continuará rodando, MongoDB pode ser conectado posteriormente');
+    }
     
-    // Tratamento de erros do servidor
-    server.on('error', (error) => {
-      console.error('❌ Erro no servidor HTTP:', error);
-      if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Porta ${PORT} já está em uso`);
-      }
-      process.exit(1);
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro ao iniciar servidor:', error);
-    console.error('❌ Stack trace:', error.stack);
+    // Inicializar serviço WhatsApp
+    try {
+      console.log('🔄 Inicializando serviço WhatsApp...');
+      await baileysService.initialize();
+      console.log('✅ Serviço WhatsApp inicializado');
+    } catch (error) {
+      console.error('⚠️ Erro ao inicializar WhatsApp (não crítico):', error.message);
+      console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');
+    }
+  });
+  
+  // Tratamento de erros do servidor
+  server.on('error', (error) => {
+    console.error('❌ Erro no servidor HTTP:', error);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Porta ${PORT} já está em uso`);
+    }
     process.exit(1);
-  }
+  });
 };
 
 startServer();
