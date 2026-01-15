@@ -24,7 +24,8 @@ Correção do cloudbuild.yaml para deploy no serviço correto:
 - ✅ cloudbuild.yaml agora aponta para o serviço correto
 - ✅ Deploy será feito na região correta (us-east1)
 
-### Status: ✅ Pronto para Push
+### Commit Hash: 8cb665c
+### Status: ✅ Push Realizado com Sucesso
 
 ---
 
