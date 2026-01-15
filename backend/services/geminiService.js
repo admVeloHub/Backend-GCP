@@ -1,5 +1,11 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+let GoogleGenerativeAI = null;
+try {
+  GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
+} catch (error) {
+  console.error('⚠️ Módulo @google/generative-ai não encontrado:', error.message);
+  console.error('⚠️ Funcionalidades de IA não estarão disponíveis');
+}
 
 // Configurar API Key do Gemini
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -8,9 +14,18 @@ let genAI = null;
 
 // Inicializar Gemini AI
 const configureGemini = () => {
+  if (!GoogleGenerativeAI) {
+    console.warn('⚠️ @google/generative-ai não disponível');
+    return null;
+  }
   if (!genAI && GEMINI_API_KEY) {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    console.log('✅ Gemini AI configurado');
+    try {
+      genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      console.log('✅ Gemini AI configurado');
+    } catch (error) {
+      console.error('⚠️ Erro ao configurar Gemini AI:', error.message);
+      return null;
+    }
   } else if (!GEMINI_API_KEY) {
     console.warn('⚠️ GEMINI_API_KEY não configurada');
   }
@@ -27,11 +42,26 @@ const analyzeSentimentAndReason = async (text) => {
       };
     }
 
+    if (!GoogleGenerativeAI) {
+      return {
+        success: false,
+        error: 'Módulo @google/generative-ai não disponível',
+        fallback: {
+          sentiment: 'Neutro',
+          reason: 'Suporte'
+        }
+      };
+    }
+
     const ai = configureGemini();
     if (!ai) {
       return {
         success: false,
-        error: 'Gemini AI não configurado. Verifique GEMINI_API_KEY'
+        error: 'Gemini AI não configurado. Verifique GEMINI_API_KEY',
+        fallback: {
+          sentiment: 'Neutro',
+          reason: 'Suporte'
+        }
       };
     }
 
@@ -114,6 +144,13 @@ const generateExecutiveReport = async (data) => {
       return {
         success: false,
         error: 'Dados inválidos para gerar relatório'
+      };
+    }
+
+    if (!GoogleGenerativeAI) {
+      return {
+        success: false,
+        error: 'Módulo @google/generative-ai não disponível'
       };
     }
 

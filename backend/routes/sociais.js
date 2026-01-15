@@ -1,8 +1,22 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const SociaisMetricas = require('../models/SociaisMetricas');
-const { analyzeSentimentAndReason, generateExecutiveReport } = require('../services/geminiService');
+
+// Lazy require do geminiService para não bloquear startup se módulo não estiver disponível
+let geminiService = null;
+const getGeminiService = () => {
+  if (!geminiService) {
+    try {
+      geminiService = require('../services/geminiService');
+    } catch (error) {
+      console.error('⚠️ Erro ao carregar geminiService:', error.message);
+      console.error('⚠️ Funcionalidades de IA não estarão disponíveis');
+      geminiService = { error: true, message: error.message };
+    }
+  }
+  return geminiService;
+};
 
 // POST /api/sociais/tabulation - Criar nova tabulação
 router.post('/tabulation', async (req, res) => {
@@ -294,7 +308,18 @@ router.post('/analyze', async (req, res) => {
     }
 
     global.emitTraffic('Sociais', 'processing', 'Consultando IA');
-    const result = await analyzeSentimentAndReason(text);
+    const gemini = getGeminiService();
+    if (gemini.error || !gemini.analyzeSentimentAndReason) {
+      return res.status(503).json({
+        success: false,
+        error: 'Serviço de IA não disponível',
+        fallback: {
+          sentiment: 'Neutro',
+          reason: 'Suporte'
+        }
+      });
+    }
+    const result = await gemini.analyzeSentimentAndReason(text);
     
     if (result.success) {
       global.emitTraffic('Sociais', 'completed', 'Concluído - Análise realizada com sucesso');
@@ -370,7 +395,14 @@ router.post('/report', async (req, res) => {
     }
 
     global.emitTraffic('Sociais', 'processing', 'Gerando relatório com IA');
-    const result = await generateExecutiveReport(data);
+    const gemini = getGeminiService();
+    if (gemini.error || !gemini.generateExecutiveReport) {
+      return res.status(503).json({
+        success: false,
+        error: 'Serviço de IA não disponível'
+      });
+    }
+    const result = await gemini.generateExecutiveReport(data);
     
     if (result.success) {
       global.emitTraffic('Sociais', 'completed', 'Concluído - Relatório gerado com sucesso');

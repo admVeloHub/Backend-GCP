@@ -1,5 +1,42 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2025-01-30
+
+**Data/Hora:** 2025-01-30  
+**Tipo:** GitHub Push  
+**Versão:** v4.16.0 (server.js), v1.3.0 (whatsapp.js), v1.2.0 (sociais.js, geminiService.js), v1.2.0 (Dockerfile)  
+**Repositório:** admVeloHub/back-skynet  
+**Branch:** main → master  
+
+### Descrição:
+Correções críticas para deploy no Cloud Run - Lazy loading de módulos opcionais:
+- Implementado lazy loading para módulos opcionais (@google/generative-ai, @whiskeysockets/baileys)
+- Servidor agora escuta na porta PRIMEIRO antes de conectar MongoDB/WhatsApp
+- Handlers de erro não fazem exit antes do servidor iniciar
+- Removido ENV PORT do Dockerfile (Cloud Run define automaticamente)
+- WhatsApp e Gemini agora têm fallback gracioso se módulos não estiverem disponíveis
+
+### Arquivos Modificados:
+- `backend/server.js` (v4.15.0 → v4.16.0) - Lazy loading WhatsApp, servidor escuta primeiro
+- `backend/routes/whatsapp.js` (v1.2.0 → v1.3.0) - Lazy loading baileysService
+- `backend/routes/sociais.js` (v1.1.0 → v1.2.0) - Lazy loading geminiService
+- `backend/services/geminiService.js` (v1.1.0 → v1.2.0) - Lazy loading @google/generative-ai
+- `Dockerfile` (v1.1.0 → v1.2.0) - Removido ENV PORT (Cloud Run define automaticamente)
+
+### Problema Resolvido:
+- ❌ Erro: `Cannot find module '@google/generative-ai'` causando falha de startup
+- ❌ Servidor não escutava na porta antes de conectar MongoDB
+- ❌ Handlers de erro faziam exit(1) antes do servidor iniciar
+- ❌ ENV PORT no Dockerfile conflitando com Cloud Run
+- ✅ Lazy loading implementado para módulos opcionais
+- ✅ Servidor escuta na porta primeiro (requisito Cloud Run)
+- ✅ Handlers de erro melhorados com flag serverStarted
+- ✅ Dockerfile otimizado para Cloud Run
+
+### Status: ✅ Pronto para Deploy
+
+---
+
 ## GitHub Push - 2025-12-08
 
 **Data/Hora:** 2025-12-08 15:27:29  

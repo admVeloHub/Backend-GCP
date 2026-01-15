@@ -1,4 +1,4 @@
-# VERSION: v1.1.0 | DATE: 2025-12-08 | AUTHOR: VeloHub Development Team
+# VERSION: v1.2.0 | DATE: 2025-12-08 | AUTHOR: VeloHub Development Team
 # Dockerfile para Backend API - Cloud Run
 
 FROM node:20-alpine
@@ -18,8 +18,7 @@ COPY . .
 # Expor porta padrão do Cloud Run
 EXPOSE 8080
 
-# Variável de ambiente para porta
-ENV PORT=8080
+# Nota: PORT é definido automaticamente pelo Cloud Run, não precisa definir aqui
 
 # Comando para iniciar a aplicação
 CMD ["node", "backend/server.js"]
