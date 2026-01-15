@@ -1,4 +1,4 @@
-// VERSION: v4.15.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.16.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -73,9 +73,36 @@ const mongodbCertificadosRoutes = require('./routes/mongodbCertificados');
 const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
 const audioAnaliseRoutes = require('./routes/audioAnalise');
 const uploadsRoutes = require('./routes/uploads');
-const whatsappRoutes = require('./routes/whatsapp');
 const sociaisRoutes = require('./routes/sociais');
-const baileysService = require('./services/whatsapp/baileysService');
+
+// Lazy require do WhatsApp para não bloquear startup se módulo não estiver disponível
+let whatsappRoutes = null;
+let baileysService = null;
+const getWhatsappRoutes = () => {
+  if (!whatsappRoutes) {
+    try {
+      whatsappRoutes = require('./routes/whatsapp');
+    } catch (error) {
+      console.error('⚠️ Erro ao carregar whatsappRoutes:', error.message);
+      console.error('⚠️ Rotas WhatsApp não estarão disponíveis');
+      whatsappRoutes = { error: true };
+    }
+  }
+  return whatsappRoutes;
+};
+
+const getBaileysService = () => {
+  if (!baileysService) {
+    try {
+      baileysService = require('./services/whatsapp/baileysService');
+    } catch (error) {
+      console.error('⚠️ Erro ao carregar baileysService:', error.message);
+      console.error('⚠️ Serviço WhatsApp não estará disponível');
+      baileysService = { error: true, initialize: async () => {} };
+    }
+  }
+  return baileysService;
+};
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -195,7 +222,22 @@ app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
 app.use('/api/audio-analise', audioAnaliseRoutes);
 app.use('/api/uploads', uploadsRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
+// Rotas WhatsApp com lazy loading
+try {
+  const whatsappRoutesLoaded = getWhatsappRoutes();
+  if (!whatsappRoutesLoaded.error) {
+    app.use('/api/whatsapp', whatsappRoutesLoaded);
+  } else {
+    app.use('/api/whatsapp', (req, res) => {
+      res.status(503).json({ success: false, error: 'Serviço WhatsApp não disponível' });
+    });
+  }
+} catch (error) {
+  console.error('⚠️ Erro ao registrar rotas WhatsApp:', error.message);
+  app.use('/api/whatsapp', (req, res) => {
+    res.status(503).json({ success: false, error: 'Serviço WhatsApp não disponível' });
+  });
+}
 app.use('/api/sociais', sociaisRoutes);
 
 // Rota de health check
@@ -345,7 +387,7 @@ const startServer = async () => {
   server.listen(PORT, '0.0.0.0', async () => {
     serverStarted = true; // Marcar que servidor iniciou
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📊 Console de Conteúdo VeloHub v4.15.0`);
+    console.log(`📊 Console de Conteúdo VeloHub v4.16.0`);
     console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📡 Monitor Skynet: http://localhost:${PORT}/monitor`);
     console.log(`🔄 SSE Events: http://localhost:${PORT}/events`);
@@ -383,9 +425,14 @@ const startServer = async () => {
     
     // Inicializar serviço WhatsApp
     try {
-      console.log('🔄 Inicializando serviço WhatsApp...');
-      await baileysService.initialize();
-      console.log('✅ Serviço WhatsApp inicializado');
+      const baileysServiceLoaded = getBaileysService();
+      if (!baileysServiceLoaded.error) {
+        console.log('🔄 Inicializando serviço WhatsApp...');
+        await baileysServiceLoaded.initialize();
+        console.log('✅ Serviço WhatsApp inicializado');
+      } else {
+        console.log('⚠️ Serviço WhatsApp não disponível (módulo não carregado)');
+      }
     } catch (error) {
       console.error('⚠️ Erro ao inicializar WhatsApp (não crítico):', error.message);
       console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');

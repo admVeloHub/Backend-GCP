@@ -1,6 +1,6 @@
 /**
  * VeloHub SKYNET - WhatsApp API Routes
- * VERSION: v1.2.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.3.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
  * 
  * Rotas para gerenciamento e uso do WhatsApp integrado
  * Requer permissão 'whatsapp' no sistema de permissionamento
@@ -8,8 +8,29 @@
 
 const express = require('express');
 const router = express.Router();
-const baileysService = require('../services/whatsapp/baileysService');
 const { checkPermission } = require('../middleware/auth');
+
+// Lazy require do baileysService para não bloquear startup se módulo não estiver disponível
+let baileysService = null;
+const getBaileysService = () => {
+  if (!baileysService) {
+    try {
+      baileysService = require('../services/whatsapp/baileysService');
+    } catch (error) {
+      console.error('⚠️ Erro ao carregar baileysService:', error.message);
+      console.error('⚠️ Funcionalidades WhatsApp não estarão disponíveis');
+      baileysService = {
+        error: true,
+        sendMessage: async () => ({ ok: false, error: 'Serviço WhatsApp não disponível' }),
+        getStatus: () => ({ connected: false, status: 'unavailable', number: null, numberFormatted: null, hasQR: false }),
+        getQR: async () => ({ hasQR: false, message: 'Serviço WhatsApp não disponível' }),
+        logout: async () => ({ success: false, error: 'Serviço WhatsApp não disponível' }),
+        getConnectedNumber: () => ({ number: null, formatted: null, connected: false })
+      };
+    }
+  }
+  return baileysService;
+};
 
 // Middleware de autenticação para rotas de gerenciamento
 // A rota /send não requer permissão pois é usada pelo VeloHub
@@ -42,7 +63,11 @@ router.post('/send', async (req, res) => {
     console.log(`[WHATSAPP API] Enviando mensagem para ${destino}...`);
     
     // Enviar mensagem via Baileys
-    const result = await baileysService.sendMessage(
+    const service = getBaileysService();
+    if (service.error) {
+      return res.status(503).json({ ok: false, error: 'Serviço WhatsApp não disponível' });
+    }
+    const result = await service.sendMessage(
       destino,
       mensagem || '',
       Array.isArray(imagens) ? imagens : [],
@@ -78,7 +103,11 @@ router.post('/send', async (req, res) => {
  */
 router.get('/status', requireWhatsAppPermission, async (req, res) => {
   try {
-    const status = baileysService.getStatus();
+    const service = getBaileysService();
+    if (service.error) {
+      return res.status(503).json({ error: 'Serviço WhatsApp não disponível' });
+    }
+    const status = service.getStatus();
     
     res.json({
       connected: status.connected,
@@ -103,7 +132,11 @@ router.get('/status', requireWhatsAppPermission, async (req, res) => {
  */
 router.get('/qr', requireWhatsAppPermission, async (req, res) => {
   try {
-    const qrData = await baileysService.getQR();
+    const service = getBaileysService();
+    if (service.error) {
+      return res.status(503).json({ hasQR: false, error: 'Serviço WhatsApp não disponível' });
+    }
+    const qrData = await service.getQR();
     
     if (qrData.hasQR) {
       res.json({
@@ -136,7 +169,11 @@ router.post('/logout', requireWhatsAppPermission, async (req, res) => {
   try {
     console.log('[WHATSAPP API] Logout solicitado');
     
-    const result = await baileysService.logout();
+    const service = getBaileysService();
+    if (service.error) {
+      return res.status(503).json({ success: false, error: 'Serviço WhatsApp não disponível' });
+    }
+    const result = await service.logout();
     
     if (result.success) {
       res.json({
@@ -166,7 +203,11 @@ router.post('/logout', requireWhatsAppPermission, async (req, res) => {
  */
 router.get('/number', requireWhatsAppPermission, async (req, res) => {
   try {
-    const numberData = baileysService.getConnectedNumber();
+    const service = getBaileysService();
+    if (service.error) {
+      return res.status(503).json({ error: 'Serviço WhatsApp não disponível' });
+    }
+    const numberData = service.getConnectedNumber();
     
     res.json({
       number: numberData.number,
