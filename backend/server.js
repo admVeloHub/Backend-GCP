@@ -61,6 +61,7 @@ const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
 const audioAnaliseRoutes = require('./routes/audioAnalise');
 const uploadsRoutes = require('./routes/uploads');
 const whatsappRoutes = require('./routes/whatsapp');
+const sociaisRoutes = require('./routes/sociais');
 const baileysService = require('./services/whatsapp/baileysService');
 
 // Importar middleware
@@ -180,6 +181,7 @@ app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
 app.use('/api/audio-analise', audioAnaliseRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/sociais', sociaisRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {

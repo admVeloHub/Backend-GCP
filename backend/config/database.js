@@ -7,12 +7,14 @@ const DB_NAME = process.env.MONGODB_DB_NAME || 'console_conteudo';
 const CONFIG_DB_NAME = process.env.CONSOLE_CONFIG_DB || 'console_config';
 const ANALISES_DB_NAME = process.env.CONSOLE_ANALISES_DB || 'console_analises';
 const ACADEMY_REGISTROS_DB_NAME = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';
+const SOCIAIS_DB_NAME = process.env.CONSOLE_SOCIAIS_DB || 'console_sociais';
 
 let client;
 let db;
 let configDb;
 let analisesDb;
 let academyDb;
+let sociaisDb;
 
 // Conectar ao MongoDB
 const connectToDatabase = async () => {
@@ -44,6 +46,10 @@ const connectToDatabase = async () => {
     
     if (!academyDb) {
       academyDb = client.db(ACADEMY_REGISTROS_DB_NAME);
+    }
+    
+    if (!sociaisDb) {
+      sociaisDb = client.db(SOCIAIS_DB_NAME);
     }
     
     return db;
@@ -85,6 +91,14 @@ const getAcademyDatabase = () => {
   return academyDb;
 };
 
+// Obter instância do banco console_sociais
+const getSociaisDatabase = () => {
+  if (!sociaisDb) {
+    throw new Error('Sociais Database não conectado. Chame connectToDatabase() primeiro.');
+  }
+  return sociaisDb;
+};
+
 // Fechar conexão
 const closeDatabase = async () => {
   if (client) {
@@ -110,6 +124,7 @@ module.exports = {
   getConfigDatabase,
   getAnalisesDatabase,
   getAcademyDatabase,
+  getSociaisDatabase,
   closeDatabase,
   checkDatabaseHealth
 };
