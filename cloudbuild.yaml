@@ -1,4 +1,4 @@
-# VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+# VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
 # Cloud Build configuration para deploy no Cloud Run
 
 steps:
@@ -49,8 +49,6 @@ steps:
       - '300'
       - '--max-instances'
       - '10'
-      - '--set-env-vars'
-      - 'PORT=8080'
 
 # Imagens a serem armazenadas no Container Registry
 images:
