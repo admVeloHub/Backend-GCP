@@ -1,4 +1,4 @@
-// VERSION: v3.4.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v3.5.0 | DATE: 2025-02-09 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
 class Velonews {
@@ -81,6 +81,49 @@ class Velonews {
       };
     } catch (error) {
       console.error('Erro ao obter velonews:', error);
+      return {
+        success: false,
+        error: 'Erro interno do servidor'
+      };
+    }
+  }
+
+  // Obter múltiplas velonews por IDs (busca em batch - otimização para evitar N+1)
+  async getByIds(ids) {
+    try {
+      const collection = this.getCollection();
+      const { ObjectId } = require('mongodb');
+      
+      // Converter IDs para ObjectId e filtrar inválidos
+      const objectIds = ids
+        .map(id => {
+          try {
+            return new ObjectId(id);
+          } catch (error) {
+            console.warn(`ID inválido ignorado: ${id}`);
+            return null;
+          }
+        })
+        .filter(id => id !== null);
+      
+      if (objectIds.length === 0) {
+        return {
+          success: true,
+          data: [],
+          count: 0
+        };
+      }
+      
+      // Buscar todas as notícias de uma vez usando $in
+      const velonews = await collection.find({ _id: { $in: objectIds } }).toArray();
+      
+      return {
+        success: true,
+        data: velonews,
+        count: velonews.length
+      };
+    } catch (error) {
+      console.error('Erro ao obter velonews por IDs:', error);
       return {
         success: false,
         error: 'Erro interno do servidor'

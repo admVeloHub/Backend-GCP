@@ -1,4 +1,4 @@
-// VERSION: v4.16.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v4.17.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -74,6 +74,8 @@ const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
 const audioAnaliseRoutes = require('./routes/audioAnalise');
 const uploadsRoutes = require('./routes/uploads');
 const sociaisRoutes = require('./routes/sociais');
+const aiServicesRoutes = require('./routes/aiServices');
+const emailRoutes = require('./routes/email');
 
 // Lazy require do WhatsApp para não bloquear startup se módulo não estiver disponível
 let whatsappRoutes = null;
@@ -239,6 +241,8 @@ try {
   });
 }
 app.use('/api/sociais', sociaisRoutes);
+app.use('/api/ai-services', aiServicesRoutes);
+app.use('/api/email', emailRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {

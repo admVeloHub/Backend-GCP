@@ -1,4 +1,4 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2025-02-09 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const HubSessions = require('../models/HubSessions');
@@ -7,37 +7,47 @@ const QualidadeFuncionario = require('../models/QualidadeFuncionario');
 const Velonews = require('../models/Velonews');
 
 // GET /api/hub-analises/hub-sessions - Listar todas as sessões hub_sessions
+// OTIMIZADO: Suporta paginação para melhor performance com grandes volumes
 router.get('/hub-sessions', async (req, res) => {
   try {
     global.emitTraffic('Hub Analises', 'received', 'Entrada recebida - GET /api/hub-analises/hub-sessions');
-    global.emitLog('info', 'GET /api/hub-analises/hub-sessions - Listando todas as sessões');
+    global.emitLog('info', 'GET /api/hub-analises/hub-sessions - Listando sessões');
     
-    const { isActive, userEmail } = req.query;
+    const { isActive, userEmail, limit, skip } = req.query;
+    
+    // Converter limit e skip para números (valores padrão se não fornecidos)
+    const limitNum = limit ? parseInt(limit, 10) : 1000;
+    const skipNum = skip ? parseInt(skip, 10) : 0;
     
     let result;
     if (isActive !== undefined) {
       const isActiveBool = isActive === 'true';
-      result = await HubSessions.getActiveSessions();
       if (isActiveBool) {
-        // Já retorna apenas ativas
+        // Buscar apenas sessões ativas
+        result = await HubSessions.getActiveSessions();
       } else {
-        // Buscar inativas
-        const allSessions = await HubSessions.getAll();
+        // Buscar inativas com paginação
+        const allSessions = await HubSessions.getAllPaginated(limitNum, skipNum);
         result = {
           success: true,
           data: allSessions.data.filter(s => !s.isActive),
-          count: allSessions.data.filter(s => !s.isActive).length
+          count: allSessions.data.filter(s => !s.isActive).length,
+          limit: allSessions.limit,
+          skip: allSessions.skip,
+          totalCount: allSessions.totalCount,
+          hasMore: allSessions.hasMore
         };
       }
     } else if (userEmail) {
       result = await HubSessions.getByUserEmail(userEmail);
     } else {
-      result = await HubSessions.getAll();
+      // Usar paginação por padrão para evitar timeouts
+      result = await HubSessions.getAllPaginated(limitNum, skipNum);
     }
     
     if (result.success) {
       global.emitTraffic('Hub Analises', 'completed', 'Concluído - Sessões listadas com sucesso');
-      global.emitLog('success', `GET /api/hub-analises/hub-sessions - ${result.count} sessões encontradas`);
+      global.emitLog('success', `GET /api/hub-analises/hub-sessions - ${result.count} sessões encontradas${result.hasMore !== undefined ? ` (paginação: ${result.skip}-${result.skip + result.count})` : ''}`);
       global.emitJsonInput(result);
       res.json(result);
     } else {
@@ -110,8 +120,8 @@ router.get('/usuarios-online-offline', async (req, res) => {
       });
     }
     
-    // Buscar todas as sessões ativas
-    const sessionsResult = await HubSessions.getAll();
+    // Buscar apenas sessões ativas diretamente (otimização: evita buscar todas as sessões)
+    const sessionsResult = await HubSessions.getActiveSessions();
     
     if (!sessionsResult.success) {
       global.emitTraffic('Hub Analises', 'error', 'Erro ao buscar sessões');
@@ -124,14 +134,12 @@ router.get('/usuarios-online-offline', async (req, res) => {
     
     // Criar mapa de sessões ativas por colaboradorNome (normalizado)
     const activeSessionsMap = new Map();
-    sessionsResult.data
-      .filter(session => session.isActive === true)
-      .forEach(session => {
-        const key = (session.colaboradorNome || session.userEmail || '').toLowerCase().trim();
-        if (key) {
-          activeSessionsMap.set(key, session);
-        }
-      });
+    sessionsResult.data.forEach(session => {
+      const key = (session.colaboradorNome || session.userEmail || '').toLowerCase().trim();
+      if (key) {
+        activeSessionsMap.set(key, session);
+      }
+    });
     
     // Organizar funcionários em online e offline
     const online = [];
@@ -188,12 +196,13 @@ router.get('/usuarios-online-offline', async (req, res) => {
 });
 
 // GET /api/hub-analises/ciencia-por-noticia - Ciência agrupada por notícia
+// OTIMIZADO: Resolve problema N+1 usando busca em batch
 router.get('/ciencia-por-noticia', async (req, res) => {
   try {
     global.emitTraffic('Hub Analises', 'received', 'Entrada recebida - GET /api/hub-analises/ciencia-por-noticia');
     global.emitLog('info', 'GET /api/hub-analises/ciencia-por-noticia - Processando ciência por notícia');
     
-    // Buscar todas as confirmações
+    // 1. Buscar todas as confirmações
     const acknowledgmentsResult = await VelonewsAcknowledgments.getAll();
     
     if (!acknowledgmentsResult.success) {
@@ -205,19 +214,33 @@ router.get('/ciencia-por-noticia', async (req, res) => {
       });
     }
     
-    // Agrupar por newsId
+    // 2. Extrair IDs únicos de notícias
+    const newsIds = [...new Set(acknowledgmentsResult.data.map(a => a.newsId.toString()))];
+    
+    // 3. Buscar TODAS as notícias de uma vez (batch) - resolve problema N+1
+    const newsMap = new Map();
+    if (newsIds.length > 0) {
+      const newsResult = await Velonews.getByIds(newsIds);
+      if (newsResult.success) {
+        newsResult.data.forEach(news => {
+          newsMap.set(news._id.toString(), news);
+        });
+      }
+    }
+    
+    // 4. Agrupar confirmações por newsId usando o mapa de notícias
     const groupedByNews = new Map();
     
     for (const acknowledgment of acknowledgmentsResult.data) {
-      const newsId = acknowledgment.newsId;
+      const newsId = acknowledgment.newsId.toString();
       
-      if (!groupedByNews.has(newsId.toString())) {
-        // Buscar título da notícia
-        const newsResult = await Velonews.getById(newsId.toString());
-        const titulo = newsResult.success ? newsResult.data.titulo : 'Notícia não encontrada';
+      if (!groupedByNews.has(newsId)) {
+        // Buscar título da notícia do mapa (já carregado em batch)
+        const news = newsMap.get(newsId);
+        const titulo = news ? news.titulo : 'Notícia não encontrada';
         
-        groupedByNews.set(newsId.toString(), {
-          newsId: newsId,
+        groupedByNews.set(newsId, {
+          newsId: acknowledgment.newsId,
           titulo: titulo,
           agentes: [],
           primeiraCiencia: null,
@@ -225,7 +248,7 @@ router.get('/ciencia-por-noticia', async (req, res) => {
         });
       }
       
-      const grupo = groupedByNews.get(newsId.toString());
+      const grupo = groupedByNews.get(newsId);
       grupo.agentes.push({
         colaboradorNome: acknowledgment.colaboradorNome,
         userEmail: acknowledgment.userEmail,
@@ -261,7 +284,7 @@ router.get('/ciencia-por-noticia', async (req, res) => {
     };
     
     global.emitTraffic('Hub Analises', 'completed', 'Concluído - Ciência por notícia processada');
-    global.emitLog('success', `GET /api/hub-analises/ciencia-por-noticia - ${response.count} notícias com ciência`);
+    global.emitLog('success', `GET /api/hub-analises/ciencia-por-noticia - ${response.count} notícias com ciência (otimizado: batch)`);
     global.emitJsonInput(response);
     res.json(response);
     

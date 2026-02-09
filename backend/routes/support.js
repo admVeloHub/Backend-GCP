@@ -1,8 +1,11 @@
-// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const TkGestao = require('../models/TkGestao');
 const TkConteudos = require('../models/TkConteudos');
+const { mapGeneroToTicketType, getTicketTypeFromTicket, isSLAExpired } = require('../utils/ticketUtils');
+const { getResponsibleUsersForTicketType, getUserEmail } = require('../services/ticketNotificationService');
+const emailService = require('../services/emailService');
 
 // Constantes para status válidos
 const VALID_STATUS_HUB = ['novo', 'aberto', 'em espera', 'pendente', 'resolvido'];
@@ -62,6 +65,38 @@ router.post('/tk-conteudos', async (req, res) => {
       global.emitTraffic('Support', 'completed', 'Concluído - Ticket de conteúdo criado');
       global.emitLog('success', `POST /api/support/tk-conteudos - Ticket criado: ${result.data._id}`);
       global.emitJsonInput(result);
+      
+      // Notificar responsáveis por email (não bloqueia resposta da API)
+      try {
+        const ticket = result.data;
+        const ticketId = ticket._id;
+        const ticketType = getTicketTypeFromTicket(ticket, 'tk_conteudos');
+        
+        if (ticketType && emailService.isReady()) {
+          // Buscar responsáveis da categoria
+          const responsibleEmails = await getResponsibleUsersForTicketType(ticketType);
+          
+          // Se ticket já tem atribuído, adicionar à lista
+          if (ticket._atribuido) {
+            const assignedEmail = await getUserEmail(ticket._atribuido);
+            if (assignedEmail && !responsibleEmails.includes(assignedEmail)) {
+              responsibleEmails.push(assignedEmail);
+            }
+          }
+          
+          // Enviar email para todos os responsáveis
+          const emailPromises = responsibleEmails.map(email => 
+            emailService.sendTicketAssignedEmail(ticket, ticketId, ticketType, email)
+          );
+          
+          await Promise.allSettled(emailPromises);
+          global.emitLog('info', `POST /api/support/tk-conteudos - Notificações enviadas para ${responsibleEmails.length} responsáveis`);
+        }
+      } catch (emailError) {
+        // Não bloquear resposta da API em caso de erro de email
+        global.emitLog('error', `POST /api/support/tk-conteudos - Erro ao enviar notificações: ${emailError.message}`);
+      }
+      
       res.status(201).json(result);
     } else {
       global.emitTraffic('Support', 'error', result.error);
@@ -129,6 +164,38 @@ router.post('/tk-gestao', async (req, res) => {
       global.emitTraffic('Support', 'completed', 'Concluído - Ticket de gestão criado');
       global.emitLog('success', `POST /api/support/tk-gestao - Ticket criado: ${result.data._id}`);
       global.emitJsonInput(result);
+      
+      // Notificar responsáveis por email (não bloqueia resposta da API)
+      try {
+        const ticket = result.data;
+        const ticketId = ticket._id;
+        const ticketType = getTicketTypeFromTicket(ticket, 'tk_gestao');
+        
+        if (ticketType && emailService.isReady()) {
+          // Buscar responsáveis da categoria
+          const responsibleEmails = await getResponsibleUsersForTicketType(ticketType);
+          
+          // Se ticket já tem atribuído, adicionar à lista
+          if (ticket._atribuido) {
+            const assignedEmail = await getUserEmail(ticket._atribuido);
+            if (assignedEmail && !responsibleEmails.includes(assignedEmail)) {
+              responsibleEmails.push(assignedEmail);
+            }
+          }
+          
+          // Enviar email para todos os responsáveis
+          const emailPromises = responsibleEmails.map(email => 
+            emailService.sendTicketAssignedEmail(ticket, ticketId, ticketType, email)
+          );
+          
+          await Promise.allSettled(emailPromises);
+          global.emitLog('info', `POST /api/support/tk-gestao - Notificações enviadas para ${responsibleEmails.length} responsáveis`);
+        }
+      } catch (emailError) {
+        // Não bloquear resposta da API em caso de erro de email
+        global.emitLog('error', `POST /api/support/tk-gestao - Erro ao enviar notificações: ${emailError.message}`);
+      }
+      
       res.status(201).json(result);
     } else {
       global.emitTraffic('Support', 'error', result.error);
@@ -318,6 +385,76 @@ router.put('/tk-conteudos', async (req, res) => {
       global.emitTraffic('Support', 'completed', 'Concluído - Ticket de conteúdo atualizado');
       global.emitLog('success', `PUT /api/support/tk-conteudos - Ticket atualizado: ${idParam}`);
       global.emitJsonInput(result);
+      
+      // Notificações por email (não bloqueia resposta da API)
+      try {
+        const updatedTicket = result.data;
+        
+        if (emailService.isReady()) {
+          // Verificar se há nova mensagem de usuário
+          if (req.body._novaMensagem && req.body._novaMensagem.autor === 'user' && updatedTicket._atribuido) {
+            const assignedEmail = await getUserEmail(updatedTicket._atribuido);
+            if (assignedEmail) {
+              await emailService.sendTicketReplyEmail(
+                updatedTicket,
+                idParam,
+                req.body._novaMensagem,
+                assignedEmail
+              );
+              global.emitLog('info', `PUT /api/support/tk-conteudos - Notificação de nova resposta enviada para ${assignedEmail}`);
+            }
+          }
+          
+          // Verificar se ticket foi atribuído a novo responsável
+          if (isAssignmentUpdate && req.body._atribuido) {
+            const assignedEmail = await getUserEmail(req.body._atribuido);
+            if (assignedEmail) {
+              const ticketType = getTicketTypeFromTicket(updatedTicket, 'tk_conteudos');
+              if (ticketType) {
+                await emailService.sendTicketAssignedEmail(
+                  updatedTicket,
+                  idParam,
+                  ticketType,
+                  assignedEmail
+                );
+                global.emitLog('info', `PUT /api/support/tk-conteudos - Notificação de atribuição enviada para ${assignedEmail}`);
+              }
+            }
+          }
+          
+          // Verificar SLA vencido
+          if (updatedTicket.createdAt) {
+            const slaExpired = isSLAExpired(updatedTicket.createdAt);
+            if (slaExpired && updatedTicket._statusConsole !== 'resolvido') {
+              // Determinar destinatário: atribuído ou responsáveis da categoria
+              let recipientEmail = null;
+              
+              if (updatedTicket._atribuido) {
+                recipientEmail = await getUserEmail(updatedTicket._atribuido);
+              }
+              
+              if (!recipientEmail) {
+                const ticketType = getTicketTypeFromTicket(updatedTicket, 'tk_conteudos');
+                if (ticketType) {
+                  const responsibleEmails = await getResponsibleUsersForTicketType(ticketType);
+                  if (responsibleEmails.length > 0) {
+                    recipientEmail = responsibleEmails[0]; // Notificar primeiro responsável
+                  }
+                }
+              }
+              
+              if (recipientEmail) {
+                await emailService.sendSLAExpiredEmail(updatedTicket, idParam, recipientEmail);
+                global.emitLog('info', `PUT /api/support/tk-conteudos - Notificação de SLA vencido enviada para ${recipientEmail}`);
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        // Não bloquear resposta da API em caso de erro de email
+        global.emitLog('error', `PUT /api/support/tk-conteudos - Erro ao enviar notificações: ${emailError.message}`);
+      }
+      
       return res.json(result);
     }
 
@@ -411,6 +548,76 @@ router.put('/tk-gestao', async (req, res) => {
       global.emitTraffic('Support', 'completed', 'Concluído - Ticket de gestão atualizado');
       global.emitLog('success', `PUT /api/support/tk-gestao - Ticket atualizado: ${idParam}`);
       global.emitJsonInput(result);
+      
+      // Notificações por email (não bloqueia resposta da API)
+      try {
+        const updatedTicket = result.data;
+        
+        if (emailService.isReady()) {
+          // Verificar se há nova mensagem de usuário
+          if (req.body._novaMensagem && req.body._novaMensagem.autor === 'user' && updatedTicket._atribuido) {
+            const assignedEmail = await getUserEmail(updatedTicket._atribuido);
+            if (assignedEmail) {
+              await emailService.sendTicketReplyEmail(
+                updatedTicket,
+                idParam,
+                req.body._novaMensagem,
+                assignedEmail
+              );
+              global.emitLog('info', `PUT /api/support/tk-gestao - Notificação de nova resposta enviada para ${assignedEmail}`);
+            }
+          }
+          
+          // Verificar se ticket foi atribuído a novo responsável
+          if (isAssignmentUpdate && req.body._atribuido) {
+            const assignedEmail = await getUserEmail(req.body._atribuido);
+            if (assignedEmail) {
+              const ticketType = getTicketTypeFromTicket(updatedTicket, 'tk_gestao');
+              if (ticketType) {
+                await emailService.sendTicketAssignedEmail(
+                  updatedTicket,
+                  idParam,
+                  ticketType,
+                  assignedEmail
+                );
+                global.emitLog('info', `PUT /api/support/tk-gestao - Notificação de atribuição enviada para ${assignedEmail}`);
+              }
+            }
+          }
+          
+          // Verificar SLA vencido
+          if (updatedTicket.createdAt) {
+            const slaExpired = isSLAExpired(updatedTicket.createdAt);
+            if (slaExpired && updatedTicket._statusConsole !== 'resolvido') {
+              // Determinar destinatário: atribuído ou responsáveis da categoria
+              let recipientEmail = null;
+              
+              if (updatedTicket._atribuido) {
+                recipientEmail = await getUserEmail(updatedTicket._atribuido);
+              }
+              
+              if (!recipientEmail) {
+                const ticketType = getTicketTypeFromTicket(updatedTicket, 'tk_gestao');
+                if (ticketType) {
+                  const responsibleEmails = await getResponsibleUsersForTicketType(ticketType);
+                  if (responsibleEmails.length > 0) {
+                    recipientEmail = responsibleEmails[0]; // Notificar primeiro responsável
+                  }
+                }
+              }
+              
+              if (recipientEmail) {
+                await emailService.sendSLAExpiredEmail(updatedTicket, idParam, recipientEmail);
+                global.emitLog('info', `PUT /api/support/tk-gestao - Notificação de SLA vencido enviada para ${recipientEmail}`);
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        // Não bloquear resposta da API em caso de erro de email
+        global.emitLog('error', `PUT /api/support/tk-gestao - Erro ao enviar notificações: ${emailError.message}`);
+      }
+      
       return res.json(result);
     }
 

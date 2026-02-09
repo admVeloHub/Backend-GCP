@@ -122,15 +122,16 @@ const calcularPontuacao = (avaliacaoData) => {
   let pontuacaoTotal = 0;
   
   // Critérios positivos
-  if (avaliacaoData.saudacaoAdequada) pontuacaoTotal += 10;
-  if (avaliacaoData.escutaAtiva) pontuacaoTotal += 15; // Reduzido de 25 para 15
-  if (avaliacaoData.clarezaObjetividade) pontuacaoTotal += 10; // NOVO
-  if (avaliacaoData.resolucaoQuestao) pontuacaoTotal += 25; // Reduzido de 40 para 25
-  if (avaliacaoData.dominioAssunto) pontuacaoTotal += 15; // NOVO
+  if (avaliacaoData.saudacaoAdequada) pontuacaoTotal += 5; // Reduzido de 10 para 5
+  if (avaliacaoData.escutaAtiva) pontuacaoTotal += 15;
+  if (avaliacaoData.clarezaObjetividade) pontuacaoTotal += 15; // Aumentado de 10 para 15
+  if (avaliacaoData.resolucaoQuestao) pontuacaoTotal += 40; // Aumentado de 25 para 40
+  if (avaliacaoData.dominioAssunto) pontuacaoTotal += 15;
   if (avaliacaoData.empatiaCordialidade) pontuacaoTotal += 15;
   if (avaliacaoData.direcionouPesquisa) pontuacaoTotal += 10;
   
   // Critérios negativos
+  if (avaliacaoData.naoConsultouBot) pontuacaoTotal -= 10; // NOVO critério
   if (avaliacaoData.procedimentoIncorreto) pontuacaoTotal -= 60;
   if (avaliacaoData.encerramentoBrusco) pontuacaoTotal -= 100;
   
@@ -145,15 +146,17 @@ const calcularPontuacaoGPT = (criteriosGPT) => {
   let pontuacaoTotal = 0;
   
   // Critérios positivos
-  if (criteriosGPT.saudacaoAdequada) pontuacaoTotal += 10;
-  if (criteriosGPT.escutaAtiva) pontuacaoTotal += 15; // Reduzido de 25 para 15
-  if (criteriosGPT.clarezaObjetividade) pontuacaoTotal += 10; // NOVO
-  if (criteriosGPT.resolucaoQuestao) pontuacaoTotal += 25; // Reduzido de 40 para 25
-  if (criteriosGPT.dominioAssunto) pontuacaoTotal += 15; // NOVO
+  if (criteriosGPT.saudacaoAdequada) pontuacaoTotal += 5; // Reduzido de 10 para 5
+  if (criteriosGPT.escutaAtiva) pontuacaoTotal += 15;
+  if (criteriosGPT.clarezaObjetividade) pontuacaoTotal += 15; // Aumentado de 10 para 15
+  if (criteriosGPT.resolucaoQuestao) pontuacaoTotal += 40; // Aumentado de 25 para 40
+  if (criteriosGPT.dominioAssunto) pontuacaoTotal += 15;
   if (criteriosGPT.empatiaCordialidade) pontuacaoTotal += 15;
   if (criteriosGPT.direcionouPesquisa) pontuacaoTotal += 10;
   
   // Critérios negativos
+  // Nota: naoConsultouBot será copiado da avaliação manual (IA não pode determinar isso)
+  if (criteriosGPT.naoConsultouBot) pontuacaoTotal -= 10; // NOVO critério
   if (criteriosGPT.procedimentoIncorreto) pontuacaoTotal -= 60;
   if (criteriosGPT.encerramentoBrusco) pontuacaoTotal -= 100;
   
@@ -169,25 +172,26 @@ const calcularPontuacaoGPT = (criteriosGPT) => {
  * Analise a ligação considerando os seguintes critérios de avaliação:
  * 
  * CRITÉRIOS POSITIVOS:
- * 1. Saudação Adequada - O colaborador cumprimentou adequadamente o cliente? (+10 pontos)
+ * 1. Saudação Adequada - O colaborador cumprimentou adequadamente o cliente? (+5 pontos)
  * 2. Escuta Ativa / Sondagem - O colaborador demonstrou escuta ativa e fez perguntas relevantes? (+15 pontos)
- * 3. Clareza e Objetividade - O colaborador foi claro e objetivo na comunicação? (+10 pontos) [NOVO]
- * 4. Resolução Questão / Seguiu o procedimento - A questão foi resolvida seguindo os procedimentos corretos? (+25 pontos)
- * 5. Domínio no assunto abordado - O colaborador demonstrou conhecimento sobre o assunto? (+15 pontos) [NOVO]
+ * 3. Clareza e Objetividade - O colaborador foi claro e objetivo na comunicação? (+15 pontos)
+ * 4. Resolução Questão / Seguiu o procedimento - A questão foi resolvida seguindo os procedimentos corretos? (+40 pontos)
+ * 5. Domínio no assunto abordado - O colaborador demonstrou conhecimento sobre o assunto? (+15 pontos)
  * 6. Empatia / Cordialidade - O colaborador demonstrou empatia e cordialidade? (+15 pontos)
  * 7. Direcionou para pesquisa de satisfação - O colaborador direcionou o cliente para pesquisa de satisfação? (+10 pontos)
  * 
  * CRITÉRIOS NEGATIVOS:
- * 8. Colaborador repassou um procedimento incorreto - Houve repasse de informação incorreta? (-60 pontos)
- * 9. Colaborador encerrou o contato de forma brusca - O contato foi encerrado abruptamente? (-100 pontos)
+ * 8. Não consultou o bot - O colaborador não consultou o bot quando deveria? (-10 pontos) [NOTA: Este critério será copiado da avaliação manual, pois a IA não pode determinar se o bot foi consultado]
+ * 9. Colaborador repassou um procedimento incorreto - Houve repasse de informação incorreta? (-60 pontos)
+ * 10. Colaborador encerrou o contato de forma brusca - O contato foi encerrado abruptamente? (-100 pontos)
  * 
  * PONTUAÇÃO:
- * - Máxima: 100 pontos (todos os critérios positivos atendidos)
- * - Mínima: 0 pontos (critérios negativos aplicados)
+ * - Máxima: 100 pontos (todos os critérios positivos atendidos: 5+15+15+40+15+15+10 = 100)
+ * - Mínima: -170 pontos (todos os critérios negativos aplicados: -10-60-100 = -170, mas será limitado a 0)
  * 
  * RETORNE:
  * - Análise detalhada da ligação
- * - Pontuação de 0 a 100
+ * - Pontuação de 0 a 100 (ou negativa se houver critérios negativos, mas será limitada a 0)
  * - Critérios atendidos (true/false para cada um)
  * - Nível de confiança (0-100%)
  * - Palavras-chave críticas identificadas
@@ -326,7 +330,7 @@ const validateFuncionario = (req, res, next) => {
 
 // Validação de dados obrigatórios para avaliações
 const validateAvaliacao = (req, res, next) => {
-  const { colaboradorNome, avaliador, mes, ano, dataLigacao, saudacaoAdequada, escutaAtiva, clarezaObjetividade, resolucaoQuestao, dominioAssunto, empatiaCordialidade, direcionouPesquisa, procedimentoIncorreto, encerramentoBrusco } = req.body;
+  const { colaboradorNome, avaliador, mes, ano, dataLigacao, saudacaoAdequada, escutaAtiva, clarezaObjetividade, resolucaoQuestao, dominioAssunto, empatiaCordialidade, direcionouPesquisa, procedimentoIncorreto, encerramentoBrusco, naoConsultouBot } = req.body;
   
   if (!colaboradorNome || colaboradorNome.trim() === '') {
     return res.status(400).json({
@@ -393,7 +397,8 @@ const validateAvaliacao = (req, res, next) => {
     empatiaCordialidade: 'Empatia/Cordialidade',
     direcionouPesquisa: 'Direcionou Pesquisa',
     procedimentoIncorreto: 'Procedimento Incorreto',
-    encerramentoBrusco: 'Encerramento Brusco'
+    encerramentoBrusco: 'Encerramento Brusco',
+    naoConsultouBot: 'Não Consultou Bot'
   };
   
   for (const [field, name] of Object.entries(booleanFields)) {

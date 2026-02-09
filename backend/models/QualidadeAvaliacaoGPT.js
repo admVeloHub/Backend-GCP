@@ -1,4 +1,5 @@
-// VERSION: v1.9.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.10.0 - Adicionado campo naoConsultouBot no schema de critériosGPT (será copiado da avaliação manual)
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -38,6 +39,10 @@ const criteriosGPTSchema = new mongoose.Schema({
     default: false
   },
   dominioAssunto: {
+    type: Boolean,
+    default: false
+  },
+  naoConsultouBot: {
     type: Boolean,
     default: false
   }

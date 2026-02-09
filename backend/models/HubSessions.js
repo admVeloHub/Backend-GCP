@@ -1,4 +1,4 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.3.0 | DATE: 2025-02-09 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('../config/database');
 
 /**
@@ -193,6 +193,39 @@ class HubSessions {
       };
     } catch (error) {
       console.error('Erro ao obter todas as sessões:', error);
+      return {
+        success: false,
+        error: 'Erro interno do servidor'
+      };
+    }
+  }
+
+  // Obter sessões com paginação (otimização para grandes volumes de dados)
+  async getAllPaginated(limit = 1000, skip = 0) {
+    try {
+      const collection = this.getCollection();
+      const sessions = await collection
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .toArray();
+      
+      // Verificar se há mais resultados
+      const totalCount = await collection.countDocuments();
+      const hasMore = (skip + sessions.length) < totalCount;
+      
+      return {
+        success: true,
+        data: sessions,
+        count: sessions.length,
+        limit,
+        skip,
+        totalCount,
+        hasMore
+      };
+    } catch (error) {
+      console.error('Erro ao obter sessões paginadas:', error);
       return {
         success: false,
         error: 'Erro interno do servidor'

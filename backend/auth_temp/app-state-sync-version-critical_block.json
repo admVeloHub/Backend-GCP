@@ -1,0 +1,27 @@
+{
+  "version": 18,
+  "hash": {
+    "type": "Buffer",
+    "data": "H+AYH6VCXO803T9K4E+GWxivVYC2IR3rtcfoG/hdb/03wMcNjpk0grlx+HdG7n9FB/OpCtbCVyPteH93tZhjWrbtB6wkBfHNkAhhrjWIGH4WGcBdIEQBOzLZdvEFbJvJYcawuTJ/IhRQQBgA7jWmxiKHXwC7jdhwcHl7PLS5L/I="
+  },
+  "indexValueMap": {
+    "TaX9qLq1k1edrumh3MCh03xjfW5VUnnedjThN4GJ8dY=": {
+      "valueMac": {
+        "type": "Buffer",
+        "data": "sWCUVGcgj1+wU8fbDbfWyrAo0yaZfXpKM6XO0aHl3DQ="
+      }
+    },
+    "aBo0nmGPDC+gA0B0VTJzPq0t6fPBAgekHSOU2c/PYLk=": {
+      "valueMac": {
+        "type": "Buffer",
+        "data": "qQH7S0m2puGLY4RnfIz2Dtfnoe7onKFgidAcsmPoQG4="
+      }
+    },
+    "p6X7OMvccutI1Y/ol0lGk7p5pEcLjDhJc51jNmIJGsU=": {
+      "valueMac": {
+        "type": "Buffer",
+        "data": "rzMgfvWqQWsNAcTmjkowQB68ZqEeDMNvwJyyM7EN1xw="
+      }
+    }
+  }
+}
