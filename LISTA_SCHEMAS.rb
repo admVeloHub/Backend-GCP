@@ -1,5 +1,5 @@
 listagem de schema de coleções do mongoDB
-  <!-- VERSION: v2.1.1 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team -->
+  <!-- VERSION: v2.2.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team -->
      
     🗄️ Database Principal: console_conteudo
   
@@ -473,6 +473,19 @@ updatedAt: Date                 // Data de atualização
     createdAt: Date,                  // Data de criação
     updatedAt: Date                   // Data de atualização
   }
+  
+  🗄️ Database: hub_escalacoes
+  
+  //schema hub_escalacoes.auth
+  {
+    _id: String,                      // ID do documento: "whatsapp_baileys_auth_requisicoes-produto" ou "whatsapp_baileys_auth_velodesk"
+    connectionType: String,           // Tipo de conexão: "requisicoes-produto" ou "velodesk" (identificação da credencial)
+    files: Object,                     // Objeto contendo arquivos de credenciais do Baileys
+                                      // Estrutura: { "creds.json": {...}, "app-state-sync-key-xxx": {...}, ... }
+    updatedAt: Date,                  // Data de última atualização
+    version: Number                   // Versão do schema (default: 1)
+  }
+  
   // ========================================
   // 📋 PADRÕES DE FORMATAÇÃO DE CONTEÚDO
   // ========================================

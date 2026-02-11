@@ -1,0 +1,831 @@
+/**
+ * VeloHub SKYNET - WhatsApp Connection Service
+ * VERSION: v2.0.1 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * 
+ * Serviço genérico para gerenciamento de conexão WhatsApp via Baileys
+ * Suporta múltiplas conexões independentes
+ * Integra funcionalidades da API WHATSAPP (reações, replies, grupos, health checks)
+ * 
+ * Mudanças v2.0.1:
+ * - Corrigida função _extractDigits() para extrair corretamente número do JID
+ * - Agora extrai apenas a parte antes de : ou @ antes de extrair dígitos
+ * - Corrigida extração de número quando user.id vem como "5515997995634:72@s.whatsapp.net"
+ * - Função agora suporta tanto string JID quanto objeto com participant/remoteJid
+ */
+
+const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const qrcode = require('qrcode');
+const MongoAuthAdapter = require('./mongoAuthAdapter');
+
+class WhatsAppConnectionService {
+  constructor(connectionId, options = {}) {
+    this.connectionId = connectionId;
+    this.sock = null;
+    this.isConnected = false;
+    this.reconnecting = false;
+    this.currentQR = null;
+    this.qrImageBase64 = null;
+    this.qrExpiresAt = null;
+    this.connectedNumber = null;
+    this.connectedNumberFormatted = null;
+    this.connectionStatus = 'disconnected'; // disconnected, connecting, connected
+    this.adapter = new MongoAuthAdapter(connectionId);
+    
+    // Estado para sistema de reações e replies
+    this.metaByMessageId = new Map(); // messageId -> { cpf, solicitacao, agente, timestamp }
+    this.recentReplies = []; // Ring buffer de replies
+    this.recentMax = 200;
+    this.sseClients = new Set(); // Clientes SSE conectados { res, agent }
+    this.listenersSetup = false; // Flag para evitar listeners duplicados
+    
+    // Configurações de callbacks e autorização
+    this.authorizedReactors = options.authorizedReactors || this._getAuthorizedReactorsFromEnv();
+    this.reactionCallbackUrl = options.reactionCallbackUrl || this._getReactionCallbackUrl();
+    this.replyCallbackUrl = options.replyCallbackUrl || this._getReplyCallbackUrl();
+    this.panelBypassSecret = options.panelBypassSecret || process.env.PANEL_BYPASS_SECRET || process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '';
+    this.repliesStreamEnabled = options.repliesStreamEnabled !== undefined 
+      ? options.repliesStreamEnabled 
+      : String(process.env.REPLIES_STREAM_ENABLED || '0') === '1';
+  }
+
+  /**
+   * Obter lista de números autorizados para reações do ambiente
+   */
+  _getAuthorizedReactorsFromEnv() {
+    const raw = process.env.AUTHORIZED_REACTORS || process.env.AUTHORIZED_REACTION_NUMBER || '';
+    return raw.split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean);
+  }
+
+  /**
+   * Obter URL de callback para reações do ambiente
+   */
+  _getReactionCallbackUrl() {
+    const PANEL_URL = (process.env.PANEL_URL || process.env.PAINEL_URL || '').replace(/\/$/, '');
+    const BACKEND_URL = process.env.BACKEND_URL || process.env.VELOHUB_BACKEND_URL || 'https://velohub-278491073220.us-east1.run.app';
+    return PANEL_URL
+      ? `${PANEL_URL}/api/requests/auto-status`
+      : `${BACKEND_URL}/api/escalacoes/solicitacoes/auto-status`;
+  }
+
+  /**
+   * Obter URL de callback para replies do ambiente
+   */
+  _getReplyCallbackUrl() {
+    const PANEL_URL = (process.env.PANEL_URL || process.env.PAINEL_URL || '').replace(/\/$/, '');
+    return PANEL_URL ? `${PANEL_URL}/api/requests/reply` : null;
+  }
+
+  /**
+   * Headers para bypass de proteção Vercel
+   */
+  _getPanelHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (this.panelBypassSecret) {
+      headers['x-vercel-protection-bypass'] = this.panelBypassSecret;
+    }
+    return headers;
+  }
+
+  /**
+   * Normalizar string (lowercase, trim, espaços)
+   */
+  _norm(s = '') {
+    return String(s).toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Extrair número do JID corretamente
+   * Extrai apenas a parte antes de : ou @ e então os dígitos dessa parte
+   * Exemplo: "5515997995634:72@s.whatsapp.net" -> "5515997995634"
+   * @param {string|Object} key - JID completo ou objeto com participant/remoteJid
+   * @returns {string} Número apenas com dígitos
+   */
+  _extractDigits(key) {
+    let jid = '';
+    if (typeof key === 'string') {
+      jid = key;
+    } else if (key && typeof key === 'object') {
+      jid = key?.participant || key?.remoteJid || '';
+    }
+    
+    if (!jid || typeof jid !== 'string') return '';
+    
+    // Extrair parte antes de : ou @
+    const beforeSeparator = jid.split(':')[0].split('@')[0];
+    
+    // Extrair apenas dígitos dessa parte
+    return String(beforeSeparator || '').replace(/\D/g, '');
+  }
+
+  /**
+   * Verificar se reator está autorizado
+   */
+  _isReactorAllowed(reactorDigits) {
+    if (this.authorizedReactors.length === 0) return true;
+    return reactorDigits && this.authorizedReactors.includes(reactorDigits);
+  }
+
+  /**
+   * Formatar número de telefone para exibição
+   */
+  _formatPhoneNumber(digits) {
+    if (!digits || digits.length < 10) return digits;
+    
+    // Formato brasileiro: (XX) XXXXX-XXXX
+    if (digits.length === 11 && digits.startsWith('55')) {
+      const ddd = digits.substring(2, 4);
+      const part1 = digits.substring(4, 9);
+      const part2 = digits.substring(9);
+      return `(${ddd}) ${part1}-${part2}`;
+    }
+    
+    return digits;
+  }
+
+  /**
+   * Conectar ao WhatsApp via Baileys
+   */
+  async connect() {
+    if (this.reconnecting) {
+      console.log(`[WHATSAPP:${this.connectionId}] Já está reconectando...`);
+      return;
+    }
+    
+    this.reconnecting = true;
+    this.isConnected = false;
+    this.connectionStatus = 'connecting';
+    
+    try {
+      console.log(`[WHATSAPP:${this.connectionId}] Iniciando conexão Baileys...`);
+      
+      // Carregar estado de autenticação do MongoDB
+      const { state, saveCreds } = await this.adapter.loadAuthState();
+      
+      this.sock = makeWASocket({
+        auth: state,
+        logger: pino({ level: 'silent' }),
+        browser: ['Chrome', 'Ubuntu', '20.04'],
+        keepAliveIntervalMs: 10000,
+        syncFullHistory: true,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000
+      });
+      
+      // Listener de atualização de credenciais
+      this.sock.ev.on('creds.update', saveCreds);
+      
+      // Listener de atualização de conexão
+      this.sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        // Gerar QR code se disponível
+        if (qr) {
+          console.log(`[WHATSAPP:${this.connectionId}] QR Code gerado`);
+          this.currentQR = qr;
+          this.qrExpiresAt = Date.now() + (60 * 1000); // Expira em 60 segundos
+          
+          // Gerar imagem base64 do QR code
+          try {
+            this.qrImageBase64 = await qrcode.toDataURL(qr);
+            console.log(`[WHATSAPP:${this.connectionId}] QR Code imagem gerada`);
+          } catch (err) {
+            console.error(`[WHATSAPP:${this.connectionId}] Erro ao gerar imagem do QR:`, err.message);
+            this.qrImageBase64 = null;
+          }
+        }
+        
+        // Conexão estabelecida
+        if (connection === 'open') {
+          this.isConnected = true;
+          this.reconnecting = false;
+          this.connectionStatus = 'connected';
+          this.currentQR = null;
+          this.qrImageBase64 = null;
+          this.qrExpiresAt = null;
+          
+          // Obter número conectado
+          const user = this.sock.user;
+          if (user && user.id) {
+            this.connectedNumber = user.id;
+            const digits = this._extractDigits(this.connectedNumber);
+            this.connectedNumberFormatted = this._formatPhoneNumber(digits);
+            console.log(`[WHATSAPP:${this.connectionId}] ✅ Conectado! Número: ${this.connectedNumberFormatted || this.connectedNumber}`);
+          }
+          
+          console.log(`[WHATSAPP:${this.connectionId}] ✅ WhatsApp conectado! API pronta!`);
+          
+          // Configurar listeners de reações e replies após conexão (apenas uma vez)
+          if (!this.listenersSetup) {
+            this.setupReactionListeners();
+            this.setupReplyListeners();
+            this.listenersSetup = true;
+          }
+        }
+        
+        // Conexão fechada
+        if (connection === 'close') {
+          this.isConnected = false;
+          this.connectionStatus = 'disconnected';
+          this.connectedNumber = null;
+          this.connectedNumberFormatted = null;
+          this.sock = null;
+          this.listenersSetup = false; // Reset flag para próxima conexão
+          
+          const reason = lastDisconnect?.error?.output?.statusCode;
+          const shouldReconnect = lastDisconnect?.error?.shouldReconnect;
+          console.log(`[WHATSAPP:${this.connectionId}] Conexão fechada. Status:`, reason, 'shouldReconnect:', shouldReconnect);
+          
+          // Verificar se foi logout real
+          if (reason === DisconnectReason.loggedOut || reason === 401) {
+            if (shouldReconnect === false) {
+              console.log(`[WHATSAPP:${this.connectionId}] DESLOGADO PERMANENTE -> limpando credenciais...`);
+              try {
+                await this.adapter.clearAuthState();
+              } catch (err) {
+                console.error(`[WHATSAPP:${this.connectionId}] Erro ao limpar credenciais:`, err.message);
+              }
+            }
+          }
+          
+          // Reconectar após delay
+          setTimeout(() => {
+            this.reconnecting = false;
+            this.connect();
+          }, 2000);
+        }
+      });
+      
+      console.log(`[WHATSAPP:${this.connectionId}] Socket Baileys criado com sucesso`);
+      
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao conectar:`, error);
+      this.reconnecting = false;
+      this.connectionStatus = 'disconnected';
+      throw error;
+    }
+  }
+
+  /**
+   * Desconectar do WhatsApp
+   */
+  async disconnect() {
+    try {
+      if (this.sock) {
+        await this.sock.end();
+        this.sock = null;
+      }
+      this.isConnected = false;
+      this.connectionStatus = 'disconnected';
+      this.connectedNumber = null;
+      this.connectedNumberFormatted = null;
+      console.log(`[WHATSAPP:${this.connectionId}] Desconectado`);
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao desconectar:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fazer logout e forçar novo QR code
+   */
+  async logout() {
+    try {
+      console.log(`[WHATSAPP:${this.connectionId}] Iniciando logout...`);
+      
+      // Desconectar socket atual
+      if (this.sock) {
+        try {
+          await this.sock.logout();
+        } catch (err) {
+          console.log(`[WHATSAPP:${this.connectionId}] Erro ao fazer logout via Baileys (pode ser normal):`, err.message);
+        }
+        this.sock = null;
+      }
+      
+      // Limpar credenciais do MongoDB
+      await this.adapter.clearAuthState();
+      
+      // Limpar estado
+      this.isConnected = false;
+      this.connectionStatus = 'disconnected';
+      this.connectedNumber = null;
+      this.connectedNumberFormatted = null;
+      this.currentQR = null;
+      this.qrImageBase64 = null;
+      this.qrExpiresAt = null;
+      this.listenersSetup = false; // Reset flag para próxima conexão
+      
+      // Reconectar (vai gerar novo QR)
+      setTimeout(() => {
+        this.reconnecting = false;
+        this.connect();
+      }, 2000);
+      
+      console.log(`[WHATSAPP:${this.connectionId}] Logout realizado. Novo QR code será gerado.`);
+      
+      return { success: true, message: 'Logout realizado. Novo QR code será gerado.' };
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao fazer logout:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Enviar mensagem via WhatsApp
+   */
+  async sendMessage(jid, mensagem, imagens = [], videos = [], metadata = {}) {
+    console.log(`[WHATSAPP:${this.connectionId}] Verificando estado antes de enviar: isConnected=${this.isConnected}, sock=${!!this.sock}`);
+    
+    if (!this.isConnected || !this.sock) {
+      console.error(`[WHATSAPP:${this.connectionId}] Estado inconsistente: isConnected=${this.isConnected}, sock=${!!this.sock}`);
+      return { ok: false, error: 'WhatsApp desconectado' };
+    }
+    
+    // Verificação adicional: se sock existe mas isConnected é false, pode estar desconectado
+    // A verificação principal já foi feita acima (isConnected && sock)
+    
+    try {
+      // Formatar JID se necessário
+      let destinatario = jid;
+      if (!destinatario || destinatario.length === 0) {
+        return { ok: false, error: 'Destino inválido' };
+      }
+      
+      if (!destinatario.includes('@')) {
+        destinatario = destinatario.includes('-')
+          ? `${destinatario}@g.us`
+          : `${destinatario}@s.whatsapp.net`;
+      }
+      
+      let messageId = null;
+      const messageIds = [];
+      
+      // Se houver imagens, enviar a primeira com legenda; demais sem legenda
+      const imgs = Array.isArray(imagens) ? imagens : [];
+      if (imgs.length > 0) {
+        try {
+          const first = imgs[0];
+          const buf = Buffer.from(String(first?.data || ''), 'base64');
+          const sentFirst = await this.sock.sendMessage(destinatario, {
+            image: buf,
+            mimetype: first?.type || 'image/jpeg',
+            caption: mensagem || ''
+          });
+          const firstId = sentFirst?.key?.id || null;
+          messageId = firstId;
+          if (firstId) messageIds.push(firstId);
+          
+          // Enviar demais imagens sem legenda
+          for (let i = 1; i < imgs.length; i++) {
+            const it = imgs[i];
+            try {
+              const b = Buffer.from(String(it?.data || ''), 'base64');
+              const sentMore = await this.sock.sendMessage(destinatario, {
+                image: b,
+                mimetype: it?.type || 'image/jpeg'
+              });
+              const mid = sentMore?.key?.id || null;
+              if (mid) messageIds.push(mid);
+            } catch (ie) {
+              console.log(`[WHATSAPP:${this.connectionId}] Falha ao enviar imagem extra:`, ie?.message);
+            }
+          }
+        } catch (imgErr) {
+          console.log(`[WHATSAPP:${this.connectionId}] Falha envio de imagem; caindo para texto:`, imgErr?.message);
+        }
+      }
+      
+      // Se houver vídeos, enviar com legenda
+      const vids = Array.isArray(videos) ? videos : [];
+      if (vids.length > 0) {
+        try {
+          for (const video of vids) {
+            try {
+              const buf = Buffer.from(String(video?.data || ''), 'base64');
+              const sentVideo = await this.sock.sendMessage(destinatario, {
+                video: buf,
+                mimetype: video?.type || 'video/mp4',
+                caption: imgs.length === 0 ? (mensagem || '') : ''
+              });
+              const videoId = sentVideo?.key?.id || null;
+              if (videoId) {
+                messageId = messageId || videoId;
+                messageIds.push(videoId);
+              }
+            } catch (vidErr) {
+              console.log(`[WHATSAPP:${this.connectionId}] Falha ao enviar vídeo:`, vidErr?.message);
+            }
+          }
+        } catch (vidErr) {
+          console.log(`[WHATSAPP:${this.connectionId}] Falha geral no envio de vídeos:`, vidErr?.message);
+        }
+      }
+      
+      // Se não houve imagem ou vídeo enviada (ou falhou), enviar texto
+      if (!messageId) {
+        const sent = await this.sock.sendMessage(destinatario, { text: mensagem || '' });
+        const tid = sent?.key?.id || null;
+        messageId = tid;
+        if (tid) messageIds.push(tid);
+      }
+      
+      console.log(`[WHATSAPP:${this.connectionId}] ✅ Mensagem enviada! messageId:`, messageId, 'all:', messageIds);
+      
+      // Armazenar metadados se fornecidos
+      if (messageId && (metadata.cpf || metadata.solicitacao || metadata.agente)) {
+        this.metaByMessageId.set(messageId, {
+          cpf: metadata.cpf || null,
+          solicitacao: metadata.solicitacao || null,
+          agente: metadata.agente || null,
+          timestamp: Date.now()
+        });
+        
+        // Se múltiplos messageIds, armazenar para todos
+        if (messageIds && messageIds.length > 1) {
+          messageIds.forEach(id => {
+            if (id) {
+              this.metaByMessageId.set(id, {
+                cpf: metadata.cpf || null,
+                solicitacao: metadata.solicitacao || null,
+                agente: metadata.agente || null,
+                timestamp: Date.now()
+              });
+            }
+          });
+        }
+      }
+      
+      return {
+        ok: true,
+        messageId: messageId,
+        messageIds: messageIds
+      };
+      
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao enviar mensagem:`, error);
+      return { ok: false, error: error.message || 'Erro desconhecido' };
+    }
+  }
+
+  /**
+   * Obter status da conexão
+   */
+  getStatus() {
+    // Verificar se há inconsistência entre isConnected e sock
+    const actuallyConnected = this.isConnected && this.sock;
+    
+    if (this.isConnected && !this.sock) {
+      console.warn(`[WHATSAPP:${this.connectionId}] Estado inconsistente detectado: isConnected=true mas sock=null. Corrigindo...`);
+      this.isConnected = false;
+      this.connectionStatus = 'disconnected';
+      this.connectedNumber = null;
+      this.connectedNumberFormatted = null;
+    }
+    
+    return {
+      connected: actuallyConnected,
+      status: actuallyConnected ? this.connectionStatus : 'disconnected',
+      number: actuallyConnected ? this.connectedNumber : null,
+      numberFormatted: actuallyConnected ? this.connectedNumberFormatted : null,
+      hasQR: !!this.currentQR && (!this.qrExpiresAt || Date.now() < this.qrExpiresAt)
+    };
+  }
+
+  /**
+   * Obter QR code atual
+   */
+  async getQR() {
+    if (!this.currentQR) {
+      return { hasQR: false, message: 'WhatsApp já está conectado ou QR code não disponível' };
+    }
+    
+    if (this.qrExpiresAt && Date.now() >= this.qrExpiresAt) {
+      return { hasQR: false, message: 'QR code expirado' };
+    }
+    
+    const expiresIn = this.qrExpiresAt ? Math.floor((this.qrExpiresAt - Date.now()) / 1000) : 60;
+    
+    return {
+      hasQR: true,
+      qr: this.qrImageBase64 || this.currentQR,
+      expiresIn: expiresIn
+    };
+  }
+
+  /**
+   * Obter número conectado
+   */
+  getConnectedNumber() {
+    // Usar a mesma lógica de verificação do getStatus() para consistência
+    const actuallyConnected = this.isConnected && this.sock;
+    
+    if (this.isConnected && !this.sock) {
+      console.warn(`[WHATSAPP:${this.connectionId}] Estado inconsistente detectado em getConnectedNumber: isConnected=true mas sock=null. Corrigindo...`);
+      this.isConnected = false;
+      this.connectionStatus = 'disconnected';
+      this.connectedNumber = null;
+      this.connectedNumberFormatted = null;
+    }
+    
+    return {
+      number: actuallyConnected ? this.connectedNumber : null,
+      formatted: actuallyConnected ? this.connectedNumberFormatted : null,
+      connected: actuallyConnected
+    };
+  }
+
+  /**
+   * Enviar reação ✅ programaticamente
+   */
+  async react(messageId, jid, participant = null) {
+    if (!this.isConnected || !this.sock) {
+      return { ok: false, error: 'WhatsApp desconectado' };
+    }
+    
+    try {
+      let remoteJid = String(jid).trim();
+      if (!remoteJid.includes('@')) {
+        remoteJid = remoteJid.includes('-') 
+          ? `${remoteJid}@g.us` 
+          : `${remoteJid}@s.whatsapp.net`;
+      }
+      
+      const key = {
+        remoteJid,
+        id: String(messageId).trim(),
+        fromMe: false
+      };
+      
+      if (participant != null && String(participant).trim() && remoteJid.endsWith('@g.us')) {
+        let partJid = String(participant).trim();
+        if (!partJid.includes('@')) partJid = `${partJid}@s.whatsapp.net`;
+        key.participant = partJid;
+      }
+      
+      const reactPayload = { react: { text: '✅', key } };
+      console.log(`[WHATSAPP:${this.connectionId}] [REACT] enviando`, { messageId: key.id, remoteJid, participant: key.participant || '(dm)' });
+      await this.sock.sendMessage(remoteJid, reactPayload);
+      console.log(`[WHATSAPP:${this.connectionId}] [REACT] sendMessage retornou ok`);
+      return { ok: true };
+    } catch (e) {
+      console.error(`[WHATSAPP:${this.connectionId}] [REACT]`, e?.message);
+      return { ok: false, error: e?.message || 'Falha ao enviar reação' };
+    }
+  }
+
+  /**
+   * Listar grupos do WhatsApp
+   */
+  async getGroups() {
+    if (!this.isConnected || !this.sock) {
+      return { ok: false, error: 'WhatsApp desconectado' };
+    }
+    
+    try {
+      const grupos = await this.sock.groupFetchAllParticipating();
+      const lista = Object.values(grupos).map(g => ({
+        nome: g.subject,
+        id: g.id
+      }));
+      return { ok: true, grupos: lista };
+    } catch (e) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao listar grupos:`, e);
+      return { ok: false, error: e.message };
+    }
+  }
+
+  /**
+   * Configurar listeners de reações
+   */
+  setupReactionListeners() {
+    if (!this.sock) return;
+    
+    // Listener em messages.update
+    this.sock.ev.on('messages.update', async (updates) => {
+      try {
+        for (const u of updates) {
+          const rx = u?.update?.reactionMessage;
+          if (!rx) continue;
+          
+          const emoji = rx.text;
+          const waMessageId = rx.key?.id;
+          const reactorDigits = this._extractDigits(u?.key || u?.update?.key || {});
+          
+          if ((emoji === '✅' || emoji === '❌') && waMessageId) {
+            if (this._isReactorAllowed(reactorDigits)) {
+              await this._handleReaction(waMessageId, emoji, reactorDigits);
+            } else {
+              console.log(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS/UPDATE] Ignorado: reator não autorizado`, reactorDigits);
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[WHATSAPP:${this.connectionId}] [REACTION UPDATE ERROR]`, e.message);
+      }
+    });
+    
+    // Listener em messages.upsert (backup)
+    // Este listener já está configurado em setupReplyListeners, mas também processa reações
+  }
+
+  /**
+   * Processar reação detectada
+   */
+  async _handleReaction(waMessageId, emoji, reactorDigits) {
+    if (!this.reactionCallbackUrl) return;
+    
+    try {
+      const response = await fetch(this.reactionCallbackUrl, {
+        method: 'POST',
+        headers: this._getPanelHeaders(),
+        body: JSON.stringify({ waMessageId, reaction: emoji, reactor: reactorDigits })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS] HTTP`, response.status, errorText);
+        return null;
+      }
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS] OK`, result.data?.status || result.status);
+      } else {
+        console.log(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS] Resposta:`, result.error || result);
+      }
+      return result;
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS] Erro:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Configurar listeners de replies
+   */
+  setupReplyListeners() {
+    if (!this.sock) return;
+    
+    this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      try {
+        if (!messages || !messages.length) return;
+        
+        for (const msg of messages) {
+          const m = msg?.message || {};
+          
+          // Ignorar protocolMessage (sincronização WhatsApp)
+          const keys = msg?.message ? Object.keys(msg.message) : [];
+          if (keys.length === 1 && m?.protocolMessage) continue;
+          
+          // Processar reações também aqui (backup)
+          const rx = m?.reactionMessage;
+          if (rx) {
+            const emoji = rx.text;
+            const waMessageId = rx.key?.id;
+            const reactorDigits = this._extractDigits(msg?.key || {});
+            
+            if ((emoji === '✅' || emoji === '❌') && waMessageId) {
+              if (this._isReactorAllowed(reactorDigits)) {
+                await this._handleReaction(waMessageId, emoji, reactorDigits);
+              } else {
+                console.log(`[WHATSAPP:${this.connectionId}] [AUTO-STATUS/UPSERT] Ignorado: reator não autorizado`, reactorDigits);
+              }
+            }
+            continue; // Pular para próxima mensagem se for reação
+          }
+          
+          // Processar replies (respostas citadas)
+          try {
+            const text = m.conversation || 
+                        m.extendedTextMessage?.text || 
+                        m.imageMessage?.caption || 
+                        m.videoMessage?.caption || '';
+            const ctx = m.extendedTextMessage?.contextInfo || {};
+            const quoted = ctx.stanzaId || 
+                          ctx?.quotedMessage?.key?.id || 
+                          ctx?.stanzaID || 
+                          ctx?.quotedStanzaID || 
+                          null;
+            
+            if (!this.repliesStreamEnabled || !quoted || !text) {
+              continue;
+            }
+            
+            // Verificar se quoted messageId tem metadados conhecidos
+            const meta = this.metaByMessageId.get(quoted);
+            if (!meta) {
+              continue; // Ignorar replies de mensagens não enviadas pelo bot
+            }
+            
+            const reactor = this._extractDigits(msg?.key || {});
+            const event = {
+              type: 'reply',
+              at: new Date().toISOString(),
+              waMessageId: quoted,
+              reactor,
+              text,
+              cpf: meta.cpf || null,
+              solicitacao: meta.solicitacao || null,
+              agente: meta.agente || null
+            };
+            
+            // Adicionar ao buffer
+            this.recentReplies.push(event);
+            if (this.recentReplies.length > this.recentMax) {
+              this.recentReplies.shift();
+            }
+            
+            // Publicar para SSE clients
+            this.publishReply(event);
+            
+            // Notificar callback se configurado
+            if (this.replyCallbackUrl) {
+              const payload = {
+                waMessageId: quoted,
+                reactor,
+                text,
+                replyMessageId: msg?.key?.id || null,
+                replyMessageJid: msg?.key?.remoteJid || null,
+                replyMessageParticipant: msg?.key?.participant || null
+              };
+              
+              const postOnce = async () => {
+                try {
+                  const r = await fetch(this.replyCallbackUrl, {
+                    method: 'POST',
+                    headers: this._getPanelHeaders(),
+                    body: JSON.stringify(payload)
+                  });
+                  const ok = r.ok;
+                  let bodyText = '';
+                  let status = r.status;
+                  try { bodyText = await r.text(); } catch {}
+                  console.log(`[WHATSAPP:${this.connectionId}] [REPLY POST]`, { status, ok, quoted, reactor, textLen: String(text).length });
+                  return ok;
+                } catch (e) {
+                  console.log(`[WHATSAPP:${this.connectionId}] [REPLY POST ERROR]`, e?.message);
+                  return false;
+                }
+              };
+              
+              let ok = false;
+              try { ok = await postOnce(); } catch (e) {}
+              if (!ok) {
+                await new Promise(r => setTimeout(r, 500));
+                try { await postOnce(); } catch (e2) {}
+              }
+            }
+          } catch (er) {
+            console.log(`[WHATSAPP:${this.connectionId}] [REPLY HOOK ERROR]`, er?.message);
+          }
+        }
+      } catch (e) {
+        console.log(`[WHATSAPP:${this.connectionId}] [REACTION UPSERT ERROR]`, e.message);
+      }
+    });
+  }
+
+  /**
+   * Publicar reply para clientes SSE
+   */
+  publishReply(event) {
+    const data = `event: reply\n` + `data: ${JSON.stringify(event)}\n\n`;
+    for (const client of this.sseClients) {
+      try {
+        const want = client?.agent 
+          ? (this._norm(client.agent) === this._norm(event?.agente || '')) 
+          : true;
+        if (want) client.res.write(data);
+      } catch (e) {
+        // Cliente desconectado, remover
+        this.sseClients.delete(client);
+      }
+    }
+  }
+
+  /**
+   * Obter replies recentes
+   */
+  getRecentReplies(agent = null) {
+    if (agent) {
+      return this.recentReplies.filter(r => this._norm(r?.agente) === this._norm(agent));
+    }
+    return this.recentReplies;
+  }
+
+  /**
+   * Inicializar serviço (conectar automaticamente)
+   */
+  async initialize() {
+    try {
+      await this.connect();
+      console.log(`[WHATSAPP:${this.connectionId}] Serviço inicializado`);
+    } catch (error) {
+      console.error(`[WHATSAPP:${this.connectionId}] Erro ao inicializar serviço:`, error);
+      throw error;
+    }
+  }
+}
+
+module.exports = WhatsAppConnectionService;

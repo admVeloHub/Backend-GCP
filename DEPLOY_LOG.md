@@ -1,5 +1,96 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2025-02-11
+
+**Data/Hora:** 2025-02-11  
+**Tipo:** GitHub Push  
+**Versão:** v2.0.1 (whatsappConnectionService.js), v2.0.0 (whatsappManager.js, whatsapp.js, mongoAuthAdapter.js), v4.17.0 (server.js)  
+**Repositório:** admVeloHub/back-skynet, admVeloHub/Backend-GCP  
+**Branch:** main  
+
+### Descrição:
+Implementação completa de sistema de múltiplas conexões WhatsApp:
+- Sistema de múltiplas conexões independentes (requisicoes-produto e velodesk)
+- Cada conexão tem seu próprio estado, credenciais e socket
+- Sistema de reações (✅ e ❌) com callbacks automáticos
+- Sistema de replies via SSE (Server-Sent Events) em tempo real
+- Health checks e endpoints de ping
+- Metadados de mensagens (CPF, solicitação, agente)
+- Gerenciamento centralizado via WhatsAppManager singleton
+
+### Arquivos Criados:
+- `backend/services/whatsapp/whatsappConnectionService.js` (v2.0.1) - Classe genérica para gerenciar conexão WhatsApp
+- `backend/services/whatsapp/whatsappManager.js` (v2.0.0) - Singleton para gerenciar múltiplas conexões
+- `CONFERENCIA_IMPLEMENTACAO_WHATSAPP.md` (v1.0.0) - Documentação completa da implementação
+- `backend/auth_temp/requisicoes-produto/` - Diretório temporário para credenciais da conexão requisicoes-produto
+
+### Arquivos Modificados:
+- `backend/services/whatsapp/mongoAuthAdapter.js` (v1.0.0 → v2.0.0) - Suporte para connectionId e diretórios separados
+- `backend/routes/whatsapp.js` (v1.3.0 → v2.0.0) - Rotas separadas para cada conexão, novos endpoints
+- `backend/server.js` (v4.17.0) - Integração com WhatsAppManager
+- `backend/models/QualidadeAvaliacao.js` - Atualizações no modelo
+- `backend/routes/qualidade.js` - Melhorias e correções
+- `LISTA_SCHEMAS.rb` - Atualização de schemas MongoDB
+
+### Funcionalidades Implementadas:
+- ✅ Duas conexões independentes: `requisicoes-produto` e `velodesk`
+- ✅ Endpoints individuais para cada conexão (status, qr, logout, send, react, grupos, replies, ping, health)
+- ✅ Sistema de reações com listeners em `messages.update` e `messages.upsert`
+- ✅ Sistema de replies via SSE com ring buffer de 200 mensagens
+- ✅ Metadados de mensagens armazenados em memória (CPF, solicitação, agente)
+- ✅ Health checks completos e ping automático opcional
+- ✅ Credenciais armazenadas separadamente no MongoDB por conexão
+- ✅ Diretórios temporários separados por conexão
+
+### Endpoints Adicionados:
+**Requisições de Produto:**
+- `GET /api/whatsapp/requisicoes-produto/status` - Status da conexão
+- `GET /api/whatsapp/requisicoes-produto/qr` - QR code para autenticação
+- `POST /api/whatsapp/requisicoes-produto/logout` - Desconectar
+- `GET /api/whatsapp/requisicoes-produto/number` - Número conectado
+- `POST /api/whatsapp/requisicoes-produto/send` - Enviar mensagem
+- `POST /api/whatsapp/requisicoes-produto/react` - Enviar reação
+- `GET /api/whatsapp/requisicoes-produto/grupos` - Listar grupos
+- `GET /api/whatsapp/requisicoes-produto/replies/recent` - Replies recentes
+- `GET /api/whatsapp/requisicoes-produto/stream/replies` - Stream SSE de replies
+- `GET /api/whatsapp/requisicoes-produto/ping` - Health check simples
+- `GET /api/whatsapp/requisicoes-produto/health` - Health check completo
+
+**VeloDesk:**
+- `GET /api/whatsapp/velodesk/status` - Status da conexão
+- `GET /api/whatsapp/velodesk/qr` - QR code para autenticação
+- `POST /api/whatsapp/velodesk/logout` - Desconectar
+- `GET /api/whatsapp/velodesk/number` - Número conectado
+- `POST /api/whatsapp/velodesk/send` - Enviar mensagem
+- `POST /api/whatsapp/velodesk/react` - Enviar reação
+- `GET /api/whatsapp/velodesk/grupos` - Listar grupos
+- `GET /api/whatsapp/velodesk/replies/recent` - Replies recentes
+- `GET /api/whatsapp/velodesk/stream/replies` - Stream SSE de replies
+- `GET /api/whatsapp/velodesk/ping` - Health check simples
+- `GET /api/whatsapp/velodesk/health` - Health check completo
+
+**Compatibilidade:**
+- `POST /api/whatsapp/send` - Mantido como alias para `requisicoes-produto/send`
+
+### Melhorias Técnicas:
+- ✅ Separação completa de conexões (estado, credenciais, sockets)
+- ✅ Sistema de metadados em memória para correlação rápida
+- ✅ Ring buffer para replies (últimas 200 mensagens)
+- ✅ SSE para streaming de replies em tempo real
+- ✅ Listeners otimizados para reações e replies
+- ✅ Controle de autorização por número para reações
+- ✅ Inicialização automática no startup do servidor
+- ✅ Tratamento de erros robusto e logs informativos
+
+### Migração Necessária:
+- Documento MongoDB antigo: `whatsapp_baileys_auth`
+- Novo documento: `whatsapp_baileys_auth_requisicoes-produto`
+- **Ação:** Renomear ou copiar documento no MongoDB para manter compatibilidade
+
+### Status: ✅ Pronto para Push
+
+---
+
 ## GitHub Push - 2025-02-09
 
 **Data/Hora:** 2025-02-09  

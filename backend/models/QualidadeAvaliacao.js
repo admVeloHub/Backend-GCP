@@ -1,5 +1,5 @@
-// VERSION: v2.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
-// CHANGELOG: v2.2.0 - Adicionado campo naoConsultouBot para critério detrator (-10 pontos)
+// VERSION: v2.3.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.3.0 - Substituído dominioAssunto por registroAtendimento, adicionado conformidadeTicket -15pts, atualizadas pontuações
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -57,11 +57,22 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
     type: Boolean,
     required: true
   },
+  registroAtendimento: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
   dominioAssunto: {
     type: Boolean,
-    required: true
+    required: false, // Deprecated - manter para compatibilidade retroativa
+    default: false
   },
   naoConsultouBot: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  conformidadeTicket: {
     type: Boolean,
     required: true,
     default: false

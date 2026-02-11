@@ -1,10 +1,15 @@
 /**
  * VeloHub SKYNET - MongoDB Auth Adapter para Baileys
- * VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+ * VERSION: v2.0.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
  * 
  * Adapter para armazenar credenciais do Baileys no MongoDB
  * Database: hub_escalacoes
  * Collection: auth
+ * 
+ * Mudanças v2.0.0:
+ * - Suporte para múltiplas conexões via connectionId
+ * - Cada conexão tem seu próprio documento no MongoDB
+ * - Compatibilidade com conexão existente (sem connectionId = 'requisicoes-produto')
  */
 
 const { MongoClient } = require('mongodb');
@@ -14,11 +19,14 @@ const path = require('path');
 const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
 
 class MongoAuthAdapter {
-  constructor() {
+  constructor(connectionId = 'requisicoes-produto') {
     this.dbName = 'hub_escalacoes';
     this.collectionName = 'auth';
-    this.docId = 'whatsapp_baileys_auth';
-    this.tempDir = path.join(__dirname, '../../auth_temp');
+    this.connectionId = connectionId;
+    // Usar docId baseado no connectionId para suportar múltiplas conexões
+    this.docId = connectionId ? `whatsapp_baileys_auth_${connectionId}` : 'whatsapp_baileys_auth';
+    // Diretório temporário específico por conexão
+    this.tempDir = path.join(__dirname, '../../auth_temp', connectionId || 'default');
     this.client = null;
   }
 
@@ -101,7 +109,7 @@ class MongoAuthAdapter {
         { upsert: true }
       );
       
-      console.log('[WHATSAPP] Credenciais salvas no MongoDB (hub_escalacoes.auth)');
+      console.log(`[WHATSAPP] Credenciais salvas no MongoDB (hub_escalacoes.auth) - Connection: ${this.connectionId}`);
     } catch (error) {
       console.error('[WHATSAPP] Erro ao salvar arquivos no MongoDB:', error.message);
       throw error;
@@ -223,7 +231,7 @@ class MongoAuthAdapter {
       // Remover documento do MongoDB
       const collection = await this._getCollection();
       await collection.deleteOne({ _id: this.docId });
-      console.log('[WHATSAPP] Credenciais removidas do MongoDB');
+      console.log(`[WHATSAPP] Credenciais removidas do MongoDB - Connection: ${this.connectionId}`);
       
       // Limpar diretório temporário
       if (fs.existsSync(this.tempDir)) {

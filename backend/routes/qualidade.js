@@ -142,22 +142,30 @@ const calcularPontuacao = (avaliacaoData) => {
 };
 
 // Função para calcular pontuação GPT com novos critérios (para compatibilidade)
+// IMPORTANTE: Esta função calcula apenas os critérios avaliados pela IA
+// registroAtendimento, naoConsultouBot e conformidadeTicket devem ser copiados da avaliação manual
 const calcularPontuacaoGPT = (criteriosGPT) => {
   let pontuacaoTotal = 0;
   
-  // Critérios positivos
-  if (criteriosGPT.saudacaoAdequada) pontuacaoTotal += 5; // Reduzido de 10 para 5
-  if (criteriosGPT.escutaAtiva) pontuacaoTotal += 15;
-  if (criteriosGPT.clarezaObjetividade) pontuacaoTotal += 15; // Aumentado de 10 para 15
-  if (criteriosGPT.resolucaoQuestao) pontuacaoTotal += 40; // Aumentado de 25 para 40
-  if (criteriosGPT.dominioAssunto) pontuacaoTotal += 15;
-  if (criteriosGPT.empatiaCordialidade) pontuacaoTotal += 15;
+  // Critérios positivos avaliados pela IA
+  if (criteriosGPT.saudacaoAdequada) pontuacaoTotal += 5;
+  if (criteriosGPT.escutaAtiva) pontuacaoTotal += 10; // Atualizado de 15 para 10
+  if (criteriosGPT.clarezaObjetividade) pontuacaoTotal += 10; // Atualizado de 15 para 10
+  if (criteriosGPT.resolucaoQuestao) pontuacaoTotal += 40;
+  if (criteriosGPT.empatiaCordialidade) pontuacaoTotal += 10; // Atualizado de 15 para 10
   if (criteriosGPT.direcionouPesquisa) pontuacaoTotal += 10;
   
-  // Critérios negativos
-  // Nota: naoConsultouBot será copiado da avaliação manual (IA não pode determinar isso)
-  if (criteriosGPT.naoConsultouBot) pontuacaoTotal -= 10; // NOVO critério
-  if (criteriosGPT.procedimentoIncorreto) pontuacaoTotal -= 60;
+  // Critérios copiados da avaliação manual (não avaliados pela IA)
+  // registroAtendimento substitui dominioAssunto - copiado da avaliação manual
+  if (criteriosGPT.registroAtendimento) pontuacaoTotal += 15;
+  if (criteriosGPT.dominioAssunto) pontuacaoTotal += 15; // Compatibilidade retroativa
+  // naoConsultouBot será copiado da avaliação manual (IA não pode determinar isso)
+  if (criteriosGPT.naoConsultouBot) pontuacaoTotal -= 10;
+  // conformidadeTicket será copiado da avaliação manual
+  if (criteriosGPT.conformidadeTicket) pontuacaoTotal -= 15;
+  
+  // Critérios negativos avaliados pela IA
+  if (criteriosGPT.procedimentoIncorreto) pontuacaoTotal -= 100; // Atualizado de -60 para -100
   if (criteriosGPT.encerramentoBrusco) pontuacaoTotal -= 100;
   
   // Garantir que a pontuação não seja negativa

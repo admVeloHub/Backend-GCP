@@ -79,7 +79,7 @@ const emailRoutes = require('./routes/email');
 
 // Lazy require do WhatsApp para não bloquear startup se módulo não estiver disponível
 let whatsappRoutes = null;
-let baileysService = null;
+let whatsappManager = null;
 const getWhatsappRoutes = () => {
   if (!whatsappRoutes) {
     try {
@@ -93,17 +93,18 @@ const getWhatsappRoutes = () => {
   return whatsappRoutes;
 };
 
-const getBaileysService = () => {
-  if (!baileysService) {
+const getWhatsAppManager = () => {
+  if (!whatsappManager) {
     try {
-      baileysService = require('./services/whatsapp/baileysService');
+      const { getWhatsAppManager: getManager } = require('./services/whatsapp/whatsappManager');
+      whatsappManager = getManager();
     } catch (error) {
-      console.error('⚠️ Erro ao carregar baileysService:', error.message);
+      console.error('⚠️ Erro ao carregar WhatsAppManager:', error.message);
       console.error('⚠️ Serviço WhatsApp não estará disponível');
-      baileysService = { error: true, initialize: async () => {} };
+      whatsappManager = { error: true, initialize: async () => {} };
     }
   }
-  return baileysService;
+  return whatsappManager;
 };
 
 // Importar middleware
@@ -427,18 +428,19 @@ const startServer = async () => {
       console.error('⚠️ Servidor continuará rodando, MongoDB pode ser conectado posteriormente');
     }
     
-    // Inicializar serviço WhatsApp
+    // Inicializar serviço WhatsApp (novo sistema de múltiplas conexões)
     try {
-      const baileysServiceLoaded = getBaileysService();
-      if (!baileysServiceLoaded.error) {
-        console.log('🔄 Inicializando serviço WhatsApp...');
-        await baileysServiceLoaded.initialize();
-        console.log('✅ Serviço WhatsApp inicializado');
+      const manager = getWhatsAppManager();
+      if (!manager.error) {
+        console.log('🔄 Inicializando WhatsAppManager (múltiplas conexões)...');
+        await manager.initialize();
+        console.log('✅ WhatsAppManager inicializado com sucesso');
+        console.log(`📱 Conexões disponíveis: ${manager.listConnections().join(', ')}`);
       } else {
-        console.log('⚠️ Serviço WhatsApp não disponível (módulo não carregado)');
+        console.log('⚠️ WhatsAppManager não disponível (módulo não carregado)');
       }
     } catch (error) {
-      console.error('⚠️ Erro ao inicializar WhatsApp (não crítico):', error.message);
+      console.error('⚠️ Erro ao inicializar WhatsAppManager (não crítico):', error.message);
       console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');
     }
   });

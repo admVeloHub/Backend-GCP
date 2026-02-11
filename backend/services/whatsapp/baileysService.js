@@ -1,10 +1,15 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.4 | DATE: 2025-01-31 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.5 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.5:
+ * - Adicionada função extractJidNumber() para extrair corretamente número do JID
+ * - Corrigida extração de número quando user.id vem como "5515997995634:72@s.whatsapp.net"
+ * - Agora extrai apenas a parte antes de : ou @ antes de extrair dígitos
  * 
  * Mudanças v1.1.4:
  * - Corrigida limpeza de número quando há inconsistência de estado
@@ -40,6 +45,23 @@ let connectedNumber = null;
 let connectedNumberFormatted = null;
 let connectionStatus = 'disconnected'; // disconnected, connecting, connected
 let adapter = null; // Adapter MongoDB para credenciais
+
+/**
+ * Extrair número do JID corretamente
+ * Extrai apenas a parte antes de : ou @ e então os dígitos dessa parte
+ * Exemplo: "5515997995634:72@s.whatsapp.net" -> "5515997995634"
+ * @param {string} jid - JID completo (ex: "5515997995634:72@s.whatsapp.net")
+ * @returns {string} Número apenas com dígitos
+ */
+function extractJidNumber(jid) {
+  if (!jid || typeof jid !== 'string') return '';
+  
+  // Extrair parte antes de : ou @
+  const beforeSeparator = jid.split(':')[0].split('@')[0];
+  
+  // Extrair apenas dígitos dessa parte
+  return String(beforeSeparator || '').replace(/\D/g, '');
+}
 
 /**
  * Formatar número de telefone para exibição
@@ -130,7 +152,7 @@ async function connect() {
         const user = sock.user;
         if (user && user.id) {
           connectedNumber = user.id;
-          const digits = connectedNumber.replace(/\D/g, '');
+          const digits = extractJidNumber(connectedNumber);
           connectedNumberFormatted = formatPhoneNumber(digits);
           console.log(`[WHATSAPP] ✅ Conectado! Número: ${connectedNumberFormatted || connectedNumber}`);
         }
