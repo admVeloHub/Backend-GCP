@@ -1,10 +1,16 @@
 /**
  * VeloHub SKYNET - WhatsApp Connection Service
- * VERSION: v2.0.1 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * VERSION: v2.0.2 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
  * 
  * Serviço genérico para gerenciamento de conexão WhatsApp via Baileys
  * Suporta múltiplas conexões independentes
  * Integra funcionalidades da API WHATSAPP (reações, replies, grupos, health checks)
+ * 
+ * Mudanças v2.0.2:
+ * - Corrigido armazenamento de número conectado: agora armazena apenas dígitos extraídos (sem :72@s.whatsapp.net)
+ * - Adicionada verificação de WebSocket readyState antes de enviar mensagens
+ * - Corrigido retorno de sendMessage: agora retorna erro se messageId for null
+ * - Melhorados logs de diagnóstico para envio de mensagens
  * 
  * Mudanças v2.0.1:
  * - Corrigida função _extractDigits() para extrair corretamente número do JID
@@ -207,10 +213,11 @@ class WhatsAppConnectionService {
           // Obter número conectado
           const user = this.sock.user;
           if (user && user.id) {
-            this.connectedNumber = user.id;
-            const digits = this._extractDigits(this.connectedNumber);
+            // Extrair apenas os dígitos do número (remover :72@s.whatsapp.net)
+            const digits = this._extractDigits(user.id);
+            this.connectedNumber = digits; // Armazenar apenas os dígitos
             this.connectedNumberFormatted = this._formatPhoneNumber(digits);
-            console.log(`[WHATSAPP:${this.connectionId}] ✅ Conectado! Número: ${this.connectedNumberFormatted || this.connectedNumber}`);
+            console.log(`[WHATSAPP:${this.connectionId}] ✅ Conectado! Número bruto: ${user.id}, Extraído: ${digits}, Formatado: ${this.connectedNumberFormatted}`);
           }
           
           console.log(`[WHATSAPP:${this.connectionId}] ✅ WhatsApp conectado! API pronta!`);
@@ -342,8 +349,12 @@ class WhatsAppConnectionService {
       return { ok: false, error: 'WhatsApp desconectado' };
     }
     
-    // Verificação adicional: se sock existe mas isConnected é false, pode estar desconectado
-    // A verificação principal já foi feita acima (isConnected && sock)
+    // Verificação adicional: estado do WebSocket
+    const wsReadyState = this.sock?.ws?.readyState;
+    if (wsReadyState !== 1) { // 1 = OPEN
+      console.error(`[WHATSAPP:${this.connectionId}] WebSocket não está aberto. readyState=${wsReadyState} (1=OPEN, 0=CONNECTING, 2=CLOSING, 3=CLOSED)`);
+      return { ok: false, error: `WebSocket não está conectado (estado: ${wsReadyState})` };
+    }
     
     try {
       // Formatar JID se necessário
@@ -428,6 +439,17 @@ class WhatsAppConnectionService {
         const tid = sent?.key?.id || null;
         messageId = tid;
         if (tid) messageIds.push(tid);
+      }
+      
+      // Verificar se realmente obteve um messageId antes de retornar sucesso
+      if (!messageId || messageIds.length === 0) {
+        console.error(`[WHATSAPP:${this.connectionId}] ❌ Falha ao enviar mensagem: nenhum messageId obtido. destinatario=${destinatario}, sock.readyState=${this.sock?.ws?.readyState}`);
+        return {
+          ok: false,
+          error: 'Falha ao enviar mensagem: nenhum messageId retornado pelo WhatsApp',
+          messageId: null,
+          messageIds: []
+        };
       }
       
       console.log(`[WHATSAPP:${this.connectionId}] ✅ Mensagem enviada! messageId:`, messageId, 'all:', messageIds);
