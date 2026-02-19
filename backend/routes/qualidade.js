@@ -1,5 +1,6 @@
-// VERSION: v5.11.3 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v5.11.4 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.11.4 - Corrigido cálculo de pontuação: conformidadeTicket agora subtrai 15 pontos (era positivo, agora é negativo).
 // v5.11.3 - Removido completamente campo dominioAssunto do backend. Todas as referências foram removidas e substituídas por registroAtendimento.
 // v5.11.2 - Removida obrigatoriedade dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Mantida apenas validação de tipo (se enviado, deve ser boolean).
 // v5.10.0 - Garantido que acessos sempre seja um objeto booleano completo {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}, nunca null. Quando desligado=true ou afastado=true, acessos é automaticamente definido como objeto com todos false. Quando nenhum acesso está marcado, retorna objeto com todos false.
@@ -133,7 +134,8 @@ const calcularPontuacao = (avaliacaoData) => {
   if (avaliacaoData.direcionouPesquisa) pontuacaoTotal += 10;
   
   // Critérios negativos
-  if (avaliacaoData.naoConsultouBot) pontuacaoTotal -= 10; // NOVO critério
+  if (avaliacaoData.naoConsultouBot) pontuacaoTotal -= 10;
+  if (avaliacaoData.conformidadeTicket) pontuacaoTotal -= 15; // Inconformidade no Ticket
   if (avaliacaoData.procedimentoIncorreto) pontuacaoTotal -= 60;
   if (avaliacaoData.encerramentoBrusco) pontuacaoTotal -= 100;
   
