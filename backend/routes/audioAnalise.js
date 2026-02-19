@@ -1,4 +1,5 @@
-// VERSION: v2.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.4.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.4.0 - Removido dominioAssunto dos selects, substituído por registroAtendimento e adicionados conformidadeTicket e naoConsultouBot
 const express = require('express');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
@@ -325,7 +326,7 @@ router.get('/result/:id', async (req, res) => {
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
         strictPopulate: false
       });
 
@@ -662,7 +663,7 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
         strictPopulate: false
       })
       .sort({ createdAt: -1 });
@@ -787,7 +788,7 @@ router.get('/listar', async (req, res) => {
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao dominioAssunto empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco',
+        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
         strictPopulate: false
       })
       .sort({ createdAt: -1 })

@@ -1,5 +1,6 @@
-// VERSION: v5.11.4 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v5.12.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.12.0 - Corrigidos valores de pontuação: escutaAtiva (15→10), clarezaObjetividade (15→10), empatiaCordialidade (15→10), procedimentoIncorreto (-60→-100). Adicionados logs detalhados para debug do cálculo de pontuação.
 // v5.11.4 - Corrigido cálculo de pontuação: conformidadeTicket agora subtrai 15 pontos (era positivo, agora é negativo).
 // v5.11.3 - Removido completamente campo dominioAssunto do backend. Todas as referências foram removidas e substituídas por registroAtendimento.
 // v5.11.2 - Removida obrigatoriedade dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Mantida apenas validação de tipo (se enviado, deve ser boolean).
@@ -124,25 +125,75 @@ const syncUserToConfig = async (funcionario, consoleAcesso) => {
 const calcularPontuacao = (avaliacaoData) => {
   let pontuacaoTotal = 0;
   
+  // Log detalhado para debug
+  console.log('🔍 [CALCULAR_PONTUACAO] Iniciando cálculo:', {
+    saudacaoAdequada: avaliacaoData.saudacaoAdequada,
+    escutaAtiva: avaliacaoData.escutaAtiva,
+    clarezaObjetividade: avaliacaoData.clarezaObjetividade,
+    resolucaoQuestao: avaliacaoData.resolucaoQuestao,
+    registroAtendimento: avaliacaoData.registroAtendimento,
+    empatiaCordialidade: avaliacaoData.empatiaCordialidade,
+    direcionouPesquisa: avaliacaoData.direcionouPesquisa,
+    naoConsultouBot: avaliacaoData.naoConsultouBot,
+    conformidadeTicket: avaliacaoData.conformidadeTicket,
+    procedimentoIncorreto: avaliacaoData.procedimentoIncorreto,
+    encerramentoBrusco: avaliacaoData.encerramentoBrusco
+  });
+  
   // Critérios positivos
-  if (avaliacaoData.saudacaoAdequada) pontuacaoTotal += 5; // Reduzido de 10 para 5
-  if (avaliacaoData.escutaAtiva) pontuacaoTotal += 15;
-  if (avaliacaoData.clarezaObjetividade) pontuacaoTotal += 15; // Aumentado de 10 para 15
-  if (avaliacaoData.resolucaoQuestao) pontuacaoTotal += 40; // Aumentado de 25 para 40
-  if (avaliacaoData.registroAtendimento) pontuacaoTotal += 15;
-  if (avaliacaoData.empatiaCordialidade) pontuacaoTotal += 15;
-  if (avaliacaoData.direcionouPesquisa) pontuacaoTotal += 10;
+  if (avaliacaoData.saudacaoAdequada) {
+    pontuacaoTotal += 5;
+    console.log('  ✅ saudacaoAdequada: +5');
+  }
+  if (avaliacaoData.escutaAtiva) {
+    pontuacaoTotal += 10; // Corrigido de 15 para 10
+    console.log('  ✅ escutaAtiva: +10');
+  }
+  if (avaliacaoData.clarezaObjetividade) {
+    pontuacaoTotal += 10; // Corrigido de 15 para 10
+    console.log('  ✅ clarezaObjetividade: +10');
+  }
+  if (avaliacaoData.resolucaoQuestao) {
+    pontuacaoTotal += 40;
+    console.log('  ✅ resolucaoQuestao: +40');
+  }
+  if (avaliacaoData.registroAtendimento) {
+    pontuacaoTotal += 15;
+    console.log('  ✅ registroAtendimento: +15');
+  }
+  if (avaliacaoData.empatiaCordialidade) {
+    pontuacaoTotal += 10; // Corrigido de 15 para 10
+    console.log('  ✅ empatiaCordialidade: +10');
+  }
+  if (avaliacaoData.direcionouPesquisa) {
+    pontuacaoTotal += 10;
+    console.log('  ✅ direcionouPesquisa: +10');
+  }
   
   // Critérios negativos
-  if (avaliacaoData.naoConsultouBot) pontuacaoTotal -= 10;
-  if (avaliacaoData.conformidadeTicket) pontuacaoTotal -= 15; // Inconformidade no Ticket
-  if (avaliacaoData.procedimentoIncorreto) pontuacaoTotal -= 60;
-  if (avaliacaoData.encerramentoBrusco) pontuacaoTotal -= 100;
+  if (avaliacaoData.naoConsultouBot) {
+    pontuacaoTotal -= 10;
+    console.log('  ❌ naoConsultouBot: -10');
+  }
+  if (avaliacaoData.conformidadeTicket) {
+    pontuacaoTotal -= 15; // Inconformidade no Ticket
+    console.log('  ❌ conformidadeTicket: -15 (subtraindo pontos)');
+  }
+  if (avaliacaoData.procedimentoIncorreto) {
+    pontuacaoTotal -= 100; // Corrigido de -60 para -100
+    console.log('  ❌ procedimentoIncorreto: -100');
+  }
+  if (avaliacaoData.encerramentoBrusco) {
+    pontuacaoTotal -= 100;
+    console.log('  ❌ encerramentoBrusco: -100');
+  }
   
   // Garantir que a pontuação não seja negativa
-  pontuacaoTotal = Math.max(0, pontuacaoTotal);
+  const pontuacaoFinal = Math.max(0, pontuacaoTotal);
   
-  return pontuacaoTotal;
+  console.log(`🔍 [CALCULAR_PONTUACAO] Pontuação calculada: ${pontuacaoTotal} → ${pontuacaoFinal} (após Math.max)`);
+  
+  return pontuacaoFinal;
 };
 
 // Função para calcular pontuação GPT com novos critérios (para compatibilidade)
@@ -1044,8 +1095,22 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
       avaliacaoData.ano = parseInt(avaliacaoData.ano, 10);
     }
     
+    // Log detalhado antes do cálculo
+    console.log('📊 [POST /avaliacoes] Valores recebidos antes do cálculo:', {
+      conformidadeTicket: avaliacaoData.conformidadeTicket,
+      tipo: typeof avaliacaoData.conformidadeTicket,
+      todosCampos: avaliacaoData
+    });
+    
     // Calcular pontuação total usando nova função
     avaliacaoData.pontuacaoTotal = calcularPontuacao(avaliacaoData);
+    
+    // Log detalhado após o cálculo
+    console.log('📊 [POST /avaliacoes] Pontuação calculada:', avaliacaoData.pontuacaoTotal);
+    console.log('📊 [POST /avaliacoes] Confirmando conformidadeTicket foi processado:', {
+      conformidadeTicket: avaliacaoData.conformidadeTicket,
+      pontuacaoFinal: avaliacaoData.pontuacaoTotal
+    });
     
     global.emitTraffic('Qualidade Avaliações', 'processing', 'Transmitindo para DB');
     const novaAvaliacao = new QualidadeAvaliacao(avaliacaoData);
@@ -1106,8 +1171,22 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
       updateData.ano = parseInt(updateData.ano, 10);
     }
     
+    // Log detalhado antes do cálculo
+    console.log('📊 [PUT /avaliacoes/:id] Valores recebidos antes do cálculo:', {
+      conformidadeTicket: updateData.conformidadeTicket,
+      tipo: typeof updateData.conformidadeTicket,
+      todosCampos: updateData
+    });
+    
     // Calcular pontuação total usando nova função
     updateData.pontuacaoTotal = calcularPontuacao(updateData);
+    
+    // Log detalhado após o cálculo
+    console.log('📊 [PUT /avaliacoes/:id] Pontuação calculada:', updateData.pontuacaoTotal);
+    console.log('📊 [PUT /avaliacoes/:id] Confirmando conformidadeTicket foi processado:', {
+      conformidadeTicket: updateData.conformidadeTicket,
+      pontuacaoFinal: updateData.pontuacaoTotal
+    });
     
     const avaliacaoAtualizada = await QualidadeAvaliacao.findByIdAndUpdate(
       id,

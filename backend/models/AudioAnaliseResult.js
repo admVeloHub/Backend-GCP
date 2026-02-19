@@ -1,4 +1,5 @@
-// VERSION: v2.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v2.1.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.1.0 - Removido campo dominioAssunto, adicionados registroAtendimento e conformidadeTicket
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
 const { getAnalisesConnection } = require('../config/analisesConnection');
@@ -9,7 +10,8 @@ const criteriosQualidadeSchema = new mongoose.Schema({
   escutaAtiva: { type: Boolean, default: false },
   clarezaObjetividade: { type: Boolean, default: false },
   resolucaoQuestao: { type: Boolean, default: false },
-  dominioAssunto: { type: Boolean, default: false },
+  registroAtendimento: { type: Boolean, default: false },
+  conformidadeTicket: { type: Boolean, default: false },
   empatiaCordialidade: { type: Boolean, default: false },
   direcionouPesquisa: { type: Boolean, default: false },
   naoConsultouBot: { type: Boolean, default: false },  // Copiado da avaliação manual

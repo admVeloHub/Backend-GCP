@@ -1,4 +1,5 @@
-// VERSION: v1.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.11.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.11.0 - Removido campo dominioAssunto, adicionados registroAtendimento e conformidadeTicket
 // CHANGELOG: v1.10.0 - Adicionado campo naoConsultouBot no schema de critériosGPT (será copiado da avaliação manual)
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
@@ -38,7 +39,11 @@ const criteriosGPTSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  dominioAssunto: {
+  registroAtendimento: {
+    type: Boolean,
+    default: false
+  },
+  conformidadeTicket: {
     type: Boolean,
     default: false
   },
