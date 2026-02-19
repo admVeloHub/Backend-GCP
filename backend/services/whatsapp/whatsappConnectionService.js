@@ -1,10 +1,18 @@
 /**
  * VeloHub SKYNET - WhatsApp Connection Service
- * VERSION: v2.0.5 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * VERSION: v2.0.7 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
  * 
  * Serviço genérico para gerenciamento de conexão WhatsApp via Baileys
  * Suporta múltiplas conexões independentes
  * Integra funcionalidades da API WHATSAPP (reações, replies, grupos, health checks)
+ * 
+ * Mudanças v2.0.6:
+ * - CORRIGIDO LOOP INFINITO: Erro 401 (não autorizado) NÃO reconecta automaticamente
+ * - Quando recebe 401, limpa credenciais e para - permite gerar novo QR manualmente
+ * - Prevenção de múltiplas conexões simultâneas: verifica flag reconnecting antes de conectar
+ * - Timeout de reconexão reduzido de 30s para 10s para evitar travamentos
+ * - Delay de reconexão aumentado para 3 segundos para outros erros (não 401)
+ * - Logs melhorados para identificar problemas de reconexão
  * 
  * Mudanças v2.0.5:
  * - ELIMINAÇÃO DE DESCONEXÕES AUTOMÁTICAS: Reconexão automática imediata quando detecta desconexão
@@ -56,6 +64,7 @@ class WhatsAppConnectionService {
     this.sock = null;
     this.isConnected = false;
     this.reconnecting = false;
+    this.reconnectStartTime = null; // Timestamp do início da reconexão
     this.manualDisconnect = false; // Flag para indicar se desconexão foi manual
     this.currentQR = null;
     this.qrImageBase64 = null;
@@ -165,11 +174,21 @@ class WhatsAppConnectionService {
   _formatPhoneNumber(digits) {
     if (!digits || digits.length < 10) return digits;
     
-    // Formato brasileiro: (XX) XXXXX-XXXX
-    if (digits.length === 11 && digits.startsWith('55')) {
+    // Formato brasileiro com código do país (13 dígitos: 55 + DDD + número)
+    // Exemplo: 5515997995634 -> (15) 99799-5634
+    if (digits.length === 13 && digits.startsWith('55')) {
       const ddd = digits.substring(2, 4);
       const part1 = digits.substring(4, 9);
       const part2 = digits.substring(9);
+      return `(${ddd}) ${part1}-${part2}`;
+    }
+    
+    // Formato brasileiro sem código do país (11 dígitos: DDD + número)
+    // Exemplo: 15997995634 -> (15) 99799-5634
+    if (digits.length === 11) {
+      const ddd = digits.substring(0, 2);
+      const part1 = digits.substring(2, 7);
+      const part2 = digits.substring(7);
       return `(${ddd}) ${part1}-${part2}`;
     }
     
@@ -180,14 +199,30 @@ class WhatsAppConnectionService {
    * Conectar ao WhatsApp via Baileys
    */
   async connect() {
-    if (this.reconnecting) {
-      console.log(`[WHATSAPP:${this.connectionId}] Já está reconectando...`);
+    // Se já está conectado, não fazer nada
+    if (this.isConnected && this.sock) {
+      console.log(`[WHATSAPP:${this.connectionId}] Já está conectado, não precisa reconectar.`);
       return;
+    }
+    
+    // PREVENIR MÚLTIPLAS CONEXÕES SIMULTÂNEAS
+    if (this.reconnecting) {
+      const reconnectStartTime = this.reconnectStartTime || Date.now();
+      const elapsed = Date.now() - reconnectStartTime;
+      if (elapsed > 10000) {
+        // Se está reconectando há mais de 10 segundos, resetar flag (pode estar travado)
+        console.log(`[WHATSAPP:${this.connectionId}] Resetando flag reconnecting após ${elapsed}ms (possível travamento)...`);
+        this.reconnecting = false;
+      } else {
+        console.log(`[WHATSAPP:${this.connectionId}] Já está reconectando (há ${elapsed}ms) - aguardando...`);
+        return; // Não iniciar nova conexão se já está reconectando
+      }
     }
     
     // Reset flag de desconexão manual ao iniciar nova conexão
     this.manualDisconnect = false;
     this.reconnecting = true;
+    this.reconnectStartTime = Date.now();
     this.isConnected = false;
     this.connectionStatus = 'connecting';
     
@@ -228,19 +263,55 @@ class WhatsAppConnectionService {
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         
-        // Gerar QR code se disponível
-        if (qr) {
-          console.log(`[WHATSAPP:${this.connectionId}] QR Code gerado`);
-          this.currentQR = qr;
-          this.qrExpiresAt = Date.now() + (60 * 1000); // Expira em 60 segundos
+        // Log para debug: verificar todos os estados de conexão
+        if (connection) {
+          console.log(`[WHATSAPP:${this.connectionId}] 🔄 connection.update: ${connection}`);
+        }
+        
+        // Verificar se já está conectado mesmo sem evento 'open' (pode acontecer com credenciais válidas)
+        // Isso é uma verificação adicional para garantir que detectamos conexões estabelecidas
+        if (this.sock && this.sock.user && !this.isConnected) {
+          console.log(`[WHATSAPP:${this.connectionId}] ⚠️ Detectado sock.user mas isConnected=false. Corrigindo estado...`);
+          this.isConnected = true;
+          this.reconnecting = false;
+          this.connectionStatus = 'connected';
           
-          // Gerar imagem base64 do QR code
-          try {
-            this.qrImageBase64 = await qrcode.toDataURL(qr);
-            console.log(`[WHATSAPP:${this.connectionId}] QR Code imagem gerada`);
-          } catch (err) {
-            console.error(`[WHATSAPP:${this.connectionId}] Erro ao gerar imagem do QR:`, err.message);
-            this.qrImageBase64 = null;
+          const user = this.sock.user;
+          if (user && user.id) {
+            const digits = this._extractDigits(user.id);
+            this.connectedNumber = digits;
+            this.connectedNumberFormatted = this._formatPhoneNumber(digits);
+            console.log(`[WHATSAPP:${this.connectionId}] ✅ Conectado! Número: ${this.connectedNumberFormatted}`);
+          }
+          
+          // Configurar listeners se ainda não foram configurados
+          if (!this.listenersSetup) {
+            this.setupReactionListeners();
+            this.setupReplyListeners();
+            this.listenersSetup = true;
+          }
+        }
+        
+        // Gerar QR code se disponível (apenas se ainda não tem QR válido)
+        if (qr) {
+          // Verificar se já tem QR válido para evitar regeneração desnecessária
+          const hasValidQR = this.currentQR && this.qrExpiresAt && Date.now() < this.qrExpiresAt;
+          
+          if (!hasValidQR) {
+            console.log(`[WHATSAPP:${this.connectionId}] QR Code gerado`);
+            this.currentQR = qr;
+            this.qrExpiresAt = Date.now() + (60 * 1000); // Expira em 60 segundos
+            
+            // Gerar imagem base64 do QR code
+            try {
+              this.qrImageBase64 = await qrcode.toDataURL(qr);
+              console.log(`[WHATSAPP:${this.connectionId}] QR Code imagem gerada`);
+            } catch (err) {
+              console.error(`[WHATSAPP:${this.connectionId}] Erro ao gerar imagem do QR:`, err.message);
+              this.qrImageBase64 = null;
+            }
+          } else {
+            console.log(`[WHATSAPP:${this.connectionId}] QR Code já existe e é válido, ignorando novo QR do Baileys`);
           }
         }
         
@@ -273,8 +344,7 @@ class WhatsAppConnectionService {
           }
         }
         
-        // Conexão fechada - ELIMINAR DESCONEXÕES AUTOMÁTICAS
-        // Se desconectar automaticamente, reconectar imediatamente para manter sempre conectado
+        // Conexão fechada - PREVENIR LOOP INFINITO DE RECONEXÃO
         if (connection === 'close') {
           const reason = lastDisconnect?.error?.output?.statusCode;
           const shouldReconnect = lastDisconnect?.error?.shouldReconnect;
@@ -293,10 +363,6 @@ class WhatsAppConnectionService {
             return; // Sair sem reconectar
           }
           
-          // Se não foi manual, foi uma desconexão automática - RECONECTAR IMEDIATAMENTE
-          console.warn(`[WHATSAPP:${this.connectionId}] ⚠️ Desconexão automática detectada (${reason}). Reconectando imediatamente...`);
-          console.warn(`[WHATSAPP:${this.connectionId}] Erro:`, errorMessage);
-          
           // Atualizar estado para desconectado (já está desconectado pelo Baileys)
           this.isConnected = false;
           this.connectionStatus = 'disconnected';
@@ -304,38 +370,40 @@ class WhatsAppConnectionService {
           this.connectedNumberFormatted = null;
           this.sock = null;
           this.listenersSetup = false;
+          this.reconnecting = false; // IMPORTANTE: Resetar flag para evitar loop
           
-          // Verificar se foi logout permanente (401 + shouldReconnect=false)
+          // Verificar se foi erro 401 (não autorizado) - NÃO RECONECTAR AUTOMATICAMENTE
           if (reason === DisconnectReason.loggedOut || reason === 401) {
-            if (shouldReconnect === false) {
-              console.log(`[WHATSAPP:${this.connectionId}] DESLOGADO PERMANENTE -> limpando credenciais e reconectando...`);
-              try {
-                await this.adapter.clearAuthState();
-                this.manualDisconnect = false; // Reset para permitir reconexão
-              } catch (err) {
-                console.error(`[WHATSAPP:${this.connectionId}] Erro ao limpar credenciais:`, err.message);
-              }
+            console.error(`[WHATSAPP:${this.connectionId}] ❌ Erro 401 (não autorizado) detectado. Credenciais inválidas ou expiradas.`);
+            console.error(`[WHATSAPP:${this.connectionId}] NÃO reconectando automaticamente - limpe credenciais e gere novo QR manualmente.`);
+            
+            // Limpar credenciais para permitir novo QR
+            try {
+              await this.adapter.clearAuthState();
+              console.log(`[WHATSAPP:${this.connectionId}] Credenciais limpas. Novo QR será gerado na próxima conexão manual.`);
+            } catch (err) {
+              console.error(`[WHATSAPP:${this.connectionId}] Erro ao limpar credenciais:`, err.message);
             }
+            
+            // NÃO reconectar automaticamente - parar aqui
+            return;
           }
           
-          // RECONECTAR AUTOMATICAMENTE IMEDIATAMENTE para eliminar desconexão automática
-          // Delay mínimo para evitar loop infinito
+          // Para outros erros (não 401), reconectar após delay
+          console.warn(`[WHATSAPP:${this.connectionId}] ⚠️ Desconexão automática detectada (${reason}). Reconectando após delay...`);
+          console.warn(`[WHATSAPP:${this.connectionId}] Erro:`, errorMessage);
+          
+          // Delay antes de reconectar para evitar loop infinito
           setTimeout(() => {
-            if (!this.manualDisconnect) { // Só reconectar se não foi desconexão manual
-              console.log(`[WHATSAPP:${this.connectionId}] Reconectando automaticamente para manter conexão ativa...`);
+            if (!this.manualDisconnect && !this.reconnecting) {
+              console.log(`[WHATSAPP:${this.connectionId}] Reconectando automaticamente...`);
               this.reconnecting = false; // Reset flag antes de reconectar
               this.connect().catch(err => {
                 console.error(`[WHATSAPP:${this.connectionId}] Erro ao reconectar automaticamente:`, err.message);
-                // Tentar novamente após delay maior
-                setTimeout(() => {
-                  if (!this.manualDisconnect) {
-                    this.reconnecting = false;
-                    this.connect();
-                  }
-                }, 5000);
+                this.reconnecting = false; // Reset flag em caso de erro
               });
             }
-          }, 1000); // Delay de 1 segundo antes de reconectar
+          }, 3000); // Delay de 3 segundos antes de reconectar
         }
       });
       
@@ -422,10 +490,25 @@ class WhatsAppConnectionService {
    * Enviar mensagem via WhatsApp
    */
   async sendMessage(jid, mensagem, imagens = [], videos = [], metadata = {}) {
-    console.log(`[WHATSAPP:${this.connectionId}] Verificando estado antes de enviar: isConnected=${this.isConnected}, sock=${!!this.sock}`);
+    console.log(`[WHATSAPP:${this.connectionId}] Verificando estado antes de enviar: isConnected=${this.isConnected}, sock=${!!this.sock}, sock.user=${!!this.sock?.user}`);
+    
+    // Verificação adicional: se sock.user existe, considerar como conectado mesmo se isConnected=false
+    // Isso resolve casos onde o evento 'open' não foi disparado mas a conexão está estabelecida
+    if (this.sock && this.sock.user && !this.isConnected) {
+      console.log(`[WHATSAPP:${this.connectionId}] ⚠️ Detectado sock.user mas isConnected=false. Corrigindo estado antes de enviar...`);
+      this.isConnected = true;
+      this.connectionStatus = 'connected';
+      
+      const user = this.sock.user;
+      if (user && user.id) {
+        const digits = this._extractDigits(user.id);
+        this.connectedNumber = digits;
+        this.connectedNumberFormatted = this._formatPhoneNumber(digits);
+      }
+    }
     
     if (!this.isConnected || !this.sock) {
-      console.error(`[WHATSAPP:${this.connectionId}] Estado inconsistente: isConnected=${this.isConnected}, sock=${!!this.sock}`);
+      console.error(`[WHATSAPP:${this.connectionId}] Estado inconsistente: isConnected=${this.isConnected}, sock=${!!this.sock}, sock.user=${!!this.sock?.user}`);
       return { ok: false, error: 'WhatsApp desconectado' };
     }
     
@@ -596,16 +679,29 @@ class WhatsAppConnectionService {
 
   /**
    * Obter QR code atual
+   * NÃO força conexão automaticamente - apenas retorna QR se disponível
+   * Para gerar novo QR, use connect() explicitamente
    */
   async getQR() {
-    if (!this.currentQR) {
-      return { hasQR: false, message: 'WhatsApp já está conectado ou QR code não disponível' };
+    // Se já está conectado, não há QR disponível
+    if (this.isConnected && this.sock) {
+      return { hasQR: false, message: 'WhatsApp já está conectado' };
     }
     
-    if (this.qrExpiresAt && Date.now() >= this.qrExpiresAt) {
-      return { hasQR: false, message: 'QR code expirado' };
+    // Se QR expirou ou não existe, apenas retornar que não está disponível
+    // NÃO forçar conexão automaticamente
+    const qrExpired = this.qrExpiresAt && Date.now() >= this.qrExpiresAt;
+    const noQR = !this.currentQR;
+    
+    if (qrExpired) {
+      return { hasQR: false, message: 'QR code expirado. Use o botão "Atualizar QR" ou "Conectar" para gerar novo QR.' };
     }
     
+    if (noQR) {
+      return { hasQR: false, message: 'QR code não disponível. Use o botão "Atualizar QR" ou "Conectar" para gerar novo QR.' };
+    }
+    
+    // Se tem QR válido, retornar
     const expiresIn = this.qrExpiresAt ? Math.floor((this.qrExpiresAt - Date.now()) / 1000) : 60;
     
     return {

@@ -1,5 +1,7 @@
-// VERSION: v5.10.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v5.11.3 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.11.3 - Removido completamente campo dominioAssunto do backend. Todas as referências foram removidas e substituídas por registroAtendimento.
+// v5.11.2 - Removida obrigatoriedade dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Mantida apenas validação de tipo (se enviado, deve ser boolean).
 // v5.10.0 - Garantido que acessos sempre seja um objeto booleano completo {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}, nunca null. Quando desligado=true ou afastado=true, acessos é automaticamente definido como objeto com todos false. Quando nenhum acesso está marcado, retorna objeto com todos false.
 // v5.9.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}. Acessos são completamente opcionais - permitido salvar funcionários mesmo com todos os acessos como false.
 // v5.8.0 - Implementada sincronização automática entre qualidade_funcionarios.acessos.Console e console_config.users. Quando Console=true, cria usuário no config. Quando Console=false, remove usuário do config.
@@ -126,7 +128,7 @@ const calcularPontuacao = (avaliacaoData) => {
   if (avaliacaoData.escutaAtiva) pontuacaoTotal += 15;
   if (avaliacaoData.clarezaObjetividade) pontuacaoTotal += 15; // Aumentado de 10 para 15
   if (avaliacaoData.resolucaoQuestao) pontuacaoTotal += 40; // Aumentado de 25 para 40
-  if (avaliacaoData.dominioAssunto) pontuacaoTotal += 15;
+  if (avaliacaoData.registroAtendimento) pontuacaoTotal += 15;
   if (avaliacaoData.empatiaCordialidade) pontuacaoTotal += 15;
   if (avaliacaoData.direcionouPesquisa) pontuacaoTotal += 10;
   
@@ -156,9 +158,8 @@ const calcularPontuacaoGPT = (criteriosGPT) => {
   if (criteriosGPT.direcionouPesquisa) pontuacaoTotal += 10;
   
   // Critérios copiados da avaliação manual (não avaliados pela IA)
-  // registroAtendimento substitui dominioAssunto - copiado da avaliação manual
+  // registroAtendimento - copiado da avaliação manual
   if (criteriosGPT.registroAtendimento) pontuacaoTotal += 15;
-  if (criteriosGPT.dominioAssunto) pontuacaoTotal += 15; // Compatibilidade retroativa
   // naoConsultouBot será copiado da avaliação manual (IA não pode determinar isso)
   if (criteriosGPT.naoConsultouBot) pontuacaoTotal -= 10;
   // conformidadeTicket será copiado da avaliação manual
@@ -184,7 +185,7 @@ const calcularPontuacaoGPT = (criteriosGPT) => {
  * 2. Escuta Ativa / Sondagem - O colaborador demonstrou escuta ativa e fez perguntas relevantes? (+15 pontos)
  * 3. Clareza e Objetividade - O colaborador foi claro e objetivo na comunicação? (+15 pontos)
  * 4. Resolução Questão / Seguiu o procedimento - A questão foi resolvida seguindo os procedimentos corretos? (+40 pontos)
- * 5. Domínio no assunto abordado - O colaborador demonstrou conhecimento sobre o assunto? (+15 pontos)
+ * 5. Registro do Atendimento - O colaborador registrou o atendimento corretamente? (+15 pontos)
  * 6. Empatia / Cordialidade - O colaborador demonstrou empatia e cordialidade? (+15 pontos)
  * 7. Direcionou para pesquisa de satisfação - O colaborador direcionou o cliente para pesquisa de satisfação? (+10 pontos)
  * 
@@ -338,7 +339,7 @@ const validateFuncionario = (req, res, next) => {
 
 // Validação de dados obrigatórios para avaliações
 const validateAvaliacao = (req, res, next) => {
-  const { colaboradorNome, avaliador, mes, ano, dataLigacao, saudacaoAdequada, escutaAtiva, clarezaObjetividade, resolucaoQuestao, dominioAssunto, empatiaCordialidade, direcionouPesquisa, procedimentoIncorreto, encerramentoBrusco, naoConsultouBot } = req.body;
+  const { colaboradorNome, avaliador, mes, ano, dataLigacao, saudacaoAdequada, escutaAtiva, clarezaObjetividade, resolucaoQuestao, registroAtendimento, empatiaCordialidade, direcionouPesquisa, procedimentoIncorreto, encerramentoBrusco, naoConsultouBot, conformidadeTicket } = req.body;
   
   if (!colaboradorNome || colaboradorNome.trim() === '') {
     return res.status(400).json({
@@ -395,25 +396,30 @@ const validateAvaliacao = (req, res, next) => {
     });
   }
   
-  // Validar todos os campos Boolean obrigatórios
+  // Validar tipo dos campos Boolean (se enviados, devem ser booleanos)
+  // Campos booleanos não são obrigatórios - checkboxes sempre enviam true ou false
   const booleanFields = {
     saudacaoAdequada: 'Saudação Adequada',
     escutaAtiva: 'Escuta Ativa',
     clarezaObjetividade: 'Clareza e Objetividade',
     resolucaoQuestao: 'Resolução Questão',
-    dominioAssunto: 'Domínio no Assunto',
+    registroAtendimento: 'Registro do Atendimento',
     empatiaCordialidade: 'Empatia/Cordialidade',
     direcionouPesquisa: 'Direcionou Pesquisa',
     procedimentoIncorreto: 'Procedimento Incorreto',
     encerramentoBrusco: 'Encerramento Brusco',
-    naoConsultouBot: 'Não Consultou Bot'
+    naoConsultouBot: 'Não Consultou Bot',
+    conformidadeTicket: 'Conformidade Ticket'
   };
   
+  // Validar apenas tipo (se campo foi enviado, deve ser boolean)
+  // Não validar obrigatoriedade - checkboxes sempre enviam true ou false
   for (const [field, name] of Object.entries(booleanFields)) {
-    if (req.body[field] === undefined || req.body[field] === null || typeof req.body[field] !== 'boolean') {
+    // Se campo foi enviado mas não é boolean, retornar erro
+    if (req.body[field] !== undefined && req.body[field] !== null && typeof req.body[field] !== 'boolean') {
       return res.status(400).json({
         success: false,
-        message: `${name} é obrigatório e deve ser um valor booleano`
+        message: `${name} deve ser um valor booleano (true ou false)`
       });
     }
   }
@@ -1018,6 +1024,18 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     
     const avaliacaoData = { ...req.body };
     
+    // Garantir valores padrão para campos booleanos (checkboxes sempre enviam true ou false)
+    // Mas se por algum motivo não foram enviados, usar false como padrão
+    const booleanFields = ['saudacaoAdequada', 'escutaAtiva', 'clarezaObjetividade', 'resolucaoQuestao', 
+                          'registroAtendimento', 'empatiaCordialidade', 'direcionouPesquisa', 
+                          'procedimentoIncorreto', 'encerramentoBrusco', 'naoConsultouBot', 'conformidadeTicket'];
+    booleanFields.forEach(field => {
+      if (avaliacaoData[field] === undefined || avaliacaoData[field] === null) {
+        avaliacaoData[field] = false;
+      } else {
+        avaliacaoData[field] = Boolean(avaliacaoData[field]);
+      }
+    });
     
     // Converter ano para número se for string
     if (avaliacaoData.ano && typeof avaliacaoData.ano === 'string') {
@@ -1068,6 +1086,18 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
     }
     
     const updateData = { ...req.body };
+    
+    // Garantir valores padrão para campos booleanos (checkboxes sempre enviam true ou false)
+    // Mas se por algum motivo não foram enviados, usar false como padrão
+    const booleanFields = ['saudacaoAdequada', 'escutaAtiva', 'clarezaObjetividade', 'resolucaoQuestao', 
+                          'registroAtendimento', 'empatiaCordialidade', 'direcionouPesquisa', 
+                          'procedimentoIncorreto', 'encerramentoBrusco', 'naoConsultouBot', 'conformidadeTicket'];
+    booleanFields.forEach(field => {
+      if (updateData[field] !== undefined && updateData[field] !== null) {
+        updateData[field] = Boolean(updateData[field]);
+      }
+      // Se não foi enviado, manter valor existente (não sobrescrever)
+    });
     
     // Converter ano para número se for string
     if (updateData.ano && typeof updateData.ano === 'string') {

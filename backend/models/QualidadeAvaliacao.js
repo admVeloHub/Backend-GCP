@@ -1,4 +1,6 @@
-// VERSION: v2.3.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v2.3.2 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.3.2 - Removido completamente campo dominioAssunto do schema. Campo não existe mais no modelo.
+// CHANGELOG: v2.3.1 - Removida obrigatoriedade (required: true) dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Todos os campos booleanos agora têm default: false.
 // CHANGELOG: v2.3.0 - Substituído dominioAssunto por registroAtendimento, adicionado conformidadeTicket -15pts, atualizadas pontuações
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
@@ -27,54 +29,46 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
   },
   saudacaoAdequada: {
     type: Boolean,
-    required: true
+    default: false
   },
   escutaAtiva: {
     type: Boolean,
-    required: true
+    default: false
   },
   resolucaoQuestao: {
     type: Boolean,
-    required: true
+    default: false
   },
   empatiaCordialidade: {
     type: Boolean,
-    required: true
+    default: false
   },
   direcionouPesquisa: {
     type: Boolean,
-    required: true
+    default: false
   },
   procedimentoIncorreto: {
     type: Boolean,
-    required: true
+    default: false
   },
   encerramentoBrusco: {
     type: Boolean,
-    required: true
+    default: false
   },
   clarezaObjetividade: {
     type: Boolean,
-    required: true
+    default: false
   },
   registroAtendimento: {
     type: Boolean,
-    required: true,
-    default: false
-  },
-  dominioAssunto: {
-    type: Boolean,
-    required: false, // Deprecated - manter para compatibilidade retroativa
     default: false
   },
   naoConsultouBot: {
     type: Boolean,
-    required: true,
     default: false
   },
   conformidadeTicket: {
     type: Boolean,
-    required: true,
     default: false
   },
   observacoes: {
