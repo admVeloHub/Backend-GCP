@@ -1,5 +1,6 @@
-// VERSION: v5.12.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v5.13.0 | DATE: 2026-02-23 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.13.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
 // v5.12.0 - Corrigidos valores de pontuação: escutaAtiva (15→10), clarezaObjetividade (15→10), empatiaCordialidade (15→10), procedimentoIncorreto (-60→-100). Adicionados logs detalhados para debug do cálculo de pontuação.
 // v5.11.4 - Corrigido cálculo de pontuação: conformidadeTicket agora subtrai 15 pontos (era positivo, agora é negativo).
 // v5.11.3 - Removido completamente campo dominioAssunto do backend. Todas as referências foram removidas e substituídas por registroAtendimento.
@@ -346,16 +347,16 @@ const validateFuncionario = (req, res, next) => {
   
   // Validação de acessos - garantir que não receba valores padrão true
   if (acessos !== undefined && acessos !== null) {
-    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
+    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
     if (typeof acessos === 'object' && !Array.isArray(acessos)) {
-      const validKeys = ['Velohub', 'Console', 'Academy', 'Desk'];
+      const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria'];
       const keys = Object.keys(acessos);
       
       // Verificar se todas as chaves são válidas
       if (!keys.every(key => validKeys.includes(key))) {
         return res.status(400).json({
           success: false,
-          message: 'Acessos deve conter apenas as chaves Velohub, Console, Academy e/ou Desk'
+          message: 'Acessos deve conter apenas as chaves Velohub, Console, Academy, Desk e/ou Ouvidoria'
         });
       }
       
@@ -568,7 +569,7 @@ const validateAvaliacaoGPT = (req, res, next) => {
 const normalizarAcessosParaResposta = (acessos) => {
   // Se for null ou undefined, retornar objeto vazio
   if (!acessos) {
-    return { Velohub: false, Console: false, Academy: false, Desk: false };
+    return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
   }
   
   // Se já for objeto booleano, garantir que tenha todas as chaves
@@ -577,13 +578,14 @@ const normalizarAcessosParaResposta = (acessos) => {
       Velohub: acessos.Velohub === true,
       Console: acessos.Console === true,
       Academy: acessos.Academy === true,
-      Desk: acessos.Desk === true
+      Desk: acessos.Desk === true,
+      Ouvidoria: acessos.Ouvidoria === true
     };
   }
   
   // Se for array (formato antigo), converter para objeto booleano
   if (Array.isArray(acessos)) {
-    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
     acessos.forEach(acesso => {
       if (acesso && acesso.sistema) {
         const sistema = acesso.sistema.toLowerCase();
@@ -595,6 +597,8 @@ const normalizarAcessosParaResposta = (acessos) => {
           novoAcessos.Academy = true;
         } else if (sistema === 'desk') {
           novoAcessos.Desk = true;
+        } else if (sistema === 'ouvidoria') {
+          novoAcessos.Ouvidoria = true;
         }
       }
     });
@@ -602,7 +606,7 @@ const normalizarAcessosParaResposta = (acessos) => {
   }
   
   // Fallback: objeto vazio
-  return { Velohub: false, Console: false, Academy: false, Desk: false };
+  return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
 };
 
 // GET /api/qualidade/funcionarios - Listar todos os funcionários
@@ -763,13 +767,17 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
             novoAcessos.Desk = true;
           }
+          if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
+            novoAcessos.Ouvidoria = true;
+          }
         });
         // Sempre retornar objeto booleano completo
         funcionarioData.acessos = {
           Velohub: novoAcessos.Velohub === true,
           Console: novoAcessos.Console === true,
           Academy: novoAcessos.Academy === true,
-          Desk: novoAcessos.Desk === true
+          Desk: novoAcessos.Desk === true,
+          Ouvidoria: novoAcessos.Ouvidoria === true
         };
       }
       // Se está no formato novo (objeto), garantir que tenha todas as chaves
@@ -778,17 +786,18 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           Velohub: funcionarioData.acessos.Velohub === true,
           Console: funcionarioData.acessos.Console === true,
           Academy: funcionarioData.acessos.Academy === true,
-          Desk: funcionarioData.acessos.Desk === true
+          Desk: funcionarioData.acessos.Desk === true,
+          Ouvidoria: funcionarioData.acessos.Ouvidoria === true
         };
       }
     } else {
       // Se acessos não foi fornecido, definir como objeto com todos false
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
     }
     
     // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
     if (funcionarioData.desligado || funcionarioData.afastado) {
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
     }
     
     // Gerar hash de senha padrão se não fornecido (primeiroNome.ultimoNomeCPF)
@@ -904,7 +913,7 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
     if (updateData.acessos !== undefined) {
       if (updateData.acessos === null || updateData.acessos === '') {
         // Se explicitamente null ou vazio, converter para objeto com todos false
-        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
       }
       // Se está no formato antigo (array), converter para objeto booleano
       else if (Array.isArray(updateData.acessos)) {
@@ -922,13 +931,17 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
             novoAcessos.Desk = true;
           }
+          if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
+            novoAcessos.Ouvidoria = true;
+          }
         });
         // Sempre retornar objeto booleano completo
         updateData.acessos = {
           Velohub: novoAcessos.Velohub === true,
           Console: novoAcessos.Console === true,
           Academy: novoAcessos.Academy === true,
-          Desk: novoAcessos.Desk === true
+          Desk: novoAcessos.Desk === true,
+          Ouvidoria: novoAcessos.Ouvidoria === true
         };
       }
       // Se está no formato novo (objeto), garantir que tenha todas as chaves
@@ -937,14 +950,15 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           Velohub: updateData.acessos.Velohub === true,
           Console: updateData.acessos.Console === true,
           Academy: updateData.acessos.Academy === true,
-          Desk: updateData.acessos.Desk === true
+          Desk: updateData.acessos.Desk === true,
+          Ouvidoria: updateData.acessos.Ouvidoria === true
         };
       }
     }
     
     // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
     if (updateData.desligado || updateData.afastado) {
-      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false };
+      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false };
     }
     // Se acessos não foi fornecido no update, não alterar o valor existente
     

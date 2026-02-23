@@ -1,4 +1,5 @@
-// VERSION: v1.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.12.0 | DATE: 2026-02-23 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.12.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
 // CHANGELOG: v1.11.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
@@ -107,7 +108,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
   },
   // Campo acessos suporta ambos os formatos durante transição
   // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
-  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
+  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
   acessos: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
@@ -115,10 +116,10 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
       validator: function(v) {
         if (!v) return true; // Opcional
         
-        // Formato novo: objeto com Velohub, Console, Academy e/ou Desk (booleanos)
+        // Formato novo: objeto com Velohub, Console, Academy, Desk e/ou Ouvidoria (booleanos)
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
-          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk'];
+          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
         
@@ -133,7 +134,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         
         return false;
       },
-      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean} ou array de objetos [{sistema, perfil, ...}]'
+      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean} ou array de objetos [{sistema, perfil, ...}]'
     }
   },
   desligado: {
@@ -201,6 +202,9 @@ qualidadeFuncionarioSchema.methods.normalizeAcessos = function() {
       if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
         novoAcessos.Desk = true;
       }
+      if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
+        novoAcessos.Ouvidoria = true;
+      }
     });
     // Retornar objeto vazio se não houver correspondências, ou null se array vazio
     return Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
@@ -235,6 +239,9 @@ qualidadeFuncionarioSchema.statics.normalizeAcessosFormat = function(acessos) {
       }
       if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
         novoAcessos.Desk = true;
+      }
+      if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
+        novoAcessos.Ouvidoria = true;
       }
     });
     // Retornar objeto vazio se não houver correspondências, ou null se array vazio
