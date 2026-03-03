@@ -1,5 +1,10 @@
-// VERSION: v2.4.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
-// CHANGELOG: v2.4.0 - Removido dominioAssunto dos selects, substituído por registroAtendimento e adicionados conformidadeTicket e naoConsultouBot
+// VERSION: v2.8.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.8.0 - Adicionada publicação manual no Pub/Sub após confirmação de upload para garantir processamento mesmo sem notificação automática do bucket
+// CHANGELOG: 
+// v2.7.0 - Melhorado tratamento de erro 500: mensagens mais específicas para problemas de credenciais GCP, validação antecipada de credenciais
+// v2.6.0 - CORREÇÃO CRÍTICA: Verificação de upload bloqueado agora usa comparação estrita (=== true) para evitar falsos positivos em avaliações novas. Adicionados logs detalhados para debug.
+// v2.5.0 - Melhorada validação de upload bloqueado: permite reenvio após 30 minutos se processamento travou, mensagens de erro mais informativas
+// v2.4.0 - Removido dominioAssunto dos selects, substituído por registroAtendimento e adicionados conformidadeTicket e naoConsultouBot
 const express = require('express');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
@@ -10,6 +15,9 @@ const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBu
 // POST /api/audio-analise/generate-upload-url - Gera Signed URL do GCS e cria registro com sent=true, treated=false
 router.post('/generate-upload-url', async (req, res) => {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:16',message:'generate-upload-url entry',data:{nomeArquivo:req.body?.nomeArquivo,mimeType:req.body?.mimeType,fileSize:req.body?.fileSize,avaliacaoId:req.body?.avaliacaoId},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     const { nomeArquivo, mimeType, fileSize, avaliacaoId } = req.body;
 
     // Validações obrigatórias
@@ -54,26 +62,89 @@ router.post('/generate-upload-url', async (req, res) => {
 
     // Verificar se já existe upload concluído e processamento em andamento
     if (avaliacaoId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:60',message:'before findById',data:{avaliacaoId},timestamp:Date.now(),runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       const avaliacao = await QualidadeAvaliacao.findById(avaliacaoId);
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:61',message:'after findById',data:{avaliacaoFound:!!avaliacao,audioSent:avaliacao?.audioSent,audioTreated:avaliacao?.audioTreated},timestamp:Date.now(),runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      // Log detalhado para debug
+      if (avaliacao) {
+        console.log(`[AUDIO ANALISE] Verificando avaliação ${avaliacaoId}:`, {
+          audioSent: avaliacao.audioSent,
+          audioTreated: avaliacao.audioTreated,
+          audioSentType: typeof avaliacao.audioSent,
+          audioTreatedType: typeof avaliacao.audioTreated,
+          nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+          audioCreatedAt: avaliacao.audioCreatedAt,
+          audioUpdatedAt: avaliacao.audioUpdatedAt
+        });
+      }
       
       // Permitir nova tentativa apenas se:
       // - Não existe avaliação OU
-      // - audioSent é false (upload anterior falhou) OU
-      // - audioTreated é true (processamento já concluído)
-      if (avaliacao && avaliacao.audioSent && !avaliacao.audioTreated) {
-        if (global.emitTraffic) {
-          global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload concluído pendente de processamento para esta avaliação');
+      // - audioSent é explicitamente false ou null/undefined (nunca teve upload) OU
+      // - audioTreated é true (processamento já concluído) OU
+      // - Passou mais de 30 minutos desde o último upload (processamento pode estar travado)
+      // IMPORTANTE: Verificar explicitamente === true para evitar falsos positivos
+      // Uma avaliação nova deve ter audioSent === false, null ou undefined
+      // Tratar casos onde campos podem ser undefined (avaliações antigas criadas antes da correção)
+      const audioSent = avaliacao?.audioSent;
+      const audioTreated = avaliacao?.audioTreated;
+      
+      // Considerar como "tem upload pendente" apenas se audioSent é EXATAMENTE true
+      // Se for false, null, undefined ou qualquer outro valor, NÃO bloquear
+      const temUploadPendente = avaliacao && 
+                                 (audioSent === true) && 
+                                 (audioTreated !== true);
+      
+      if (temUploadPendente) {
+        // Verificar se passou mais de 30 minutos desde o último upload
+        const audioUpdatedAt = avaliacao.audioUpdatedAt || avaliacao.audioCreatedAt;
+        if (audioUpdatedAt) {
+          const tempoDecorrido = (Date.now() - new Date(audioUpdatedAt).getTime()) / (1000 * 60); // minutos
+          
+          if (tempoDecorrido > 30) {
+            // Permitir reenvio após 30 minutos (processamento pode estar travado)
+            console.log(`[AUDIO ANALISE] Permitindo reenvio após ${tempoDecorrido.toFixed(1)} minutos de espera`);
+            // Continuar com o fluxo normal (não bloquear)
+          } else {
+            // Bloquear apenas se não passou 30 minutos
+            if (global.emitTraffic) {
+              global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', `Upload bloqueado - aguardando processamento há ${tempoDecorrido.toFixed(1)} minutos`);
+            }
+            
+            return res.status(400).json({
+              success: false,
+              error: `Um áudio já foi enviado para esta avaliação há ${Math.round(tempoDecorrido)} minutos e está aguardando processamento. Aguarde a conclusão ou tente novamente após 30 minutos se o processamento estiver travado.`,
+              tempoDecorrido: Math.round(tempoDecorrido),
+              podeReenviar: tempoDecorrido > 30
+            });
+          }
+        } else {
+          // Se não há timestamp, bloquear por segurança
+          if (global.emitTraffic) {
+            global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload concluído pendente de processamento para esta avaliação');
+          }
+          
+          return res.status(400).json({
+            success: false,
+            error: 'Já existe um upload concluído pendente de processamento para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
+          });
         }
-        
-        return res.status(400).json({
-          success: false,
-          error: 'Já existe um upload concluído pendente de processamento para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
-        });
       }
     }
 
     // Gerar Signed URL
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:130',message:'before generateUploadSignedUrl',data:{nomeArquivo,mimeType},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     const uploadData = await generateUploadSignedUrl(nomeArquivo, mimeType);
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:131',message:'after generateUploadSignedUrl',data:{hasUploadData:!!uploadData,fileName:uploadData?.fileName},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
 
     // Atualizar QualidadeAvaliacao com informações do upload (SEM marcar audioSent ainda)
     if (avaliacaoId) {
@@ -92,13 +163,35 @@ router.post('/generate-upload-url', async (req, res) => {
       
       // Salvar nome do arquivo e resetar status (permite retentativas)
       // audioSent será marcado como true apenas após confirmação de upload bem-sucedido
+      // IMPORTANTE: Garantir que campos estão explicitamente setados como false se não existirem
       avaliacao.nomeArquivoAudio = uploadData.fileName;
       avaliacao.audioSent = false; // Não marcar como enviado ainda
       avaliacao.audioTreated = false;
       avaliacao.audioCreatedAt = new Date();
       avaliacao.audioUpdatedAt = new Date();
       
+      // Log para debug
+      console.log(`[AUDIO ANALISE] Atualizando avaliação ${avaliacaoId} antes do upload:`, {
+        nomeArquivoAudio: avaliacao.nomeArquivoAudio,
+        audioSent: avaliacao.audioSent,
+        audioTreated: avaliacao.audioTreated
+      });
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:163',message:'before save',data:{avaliacaoId,nomeArquivoAudio:avaliacao.nomeArquivoAudio,audioSent:avaliacao.audioSent},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       await avaliacao.save();
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:164',message:'after save',data:{avaliacaoId},timestamp:Date.now(),runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
+      // Verificar após salvar
+      const avaliacaoVerificada = await QualidadeAvaliacao.findById(avaliacaoId);
+      console.log(`[AUDIO ANALISE] Avaliação ${avaliacaoId} após salvar:`, {
+        audioSent: avaliacaoVerificada.audioSent,
+        audioTreated: avaliacaoVerificada.audioTreated,
+        audioSentType: typeof avaliacaoVerificada.audioSent
+      });
     }
 
     if (global.emitTraffic) {
@@ -129,15 +222,33 @@ router.post('/generate-upload-url', async (req, res) => {
       }
     });
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'audioAnalise.js:201',message:'catch error',data:{errorMessage:error?.message,errorStack:error?.stack?.substring(0,500),errorName:error?.name},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
+    // #endregion
     console.error('Erro ao gerar Signed URL:', error);
     
     if (global.emitTraffic) {
       global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', error.message);
     }
     
+    // Mensagem de erro mais específica para problemas de credenciais
+    let errorMessage = 'Erro interno do servidor ao gerar URL de upload';
+    if (error.message && (
+      error.message.includes('client_email') || 
+      error.message.includes('Credenciais do GCP') ||
+      error.message.includes('GCP_SERVICE_ACCOUNT_KEY')
+    )) {
+      errorMessage = error.message;
+    }
+    
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao gerar URL de upload'
+      error: errorMessage,
+      message: errorMessage, // Compatibilidade - alguns clientes podem usar 'message'
+      details: process.env.NODE_ENV === 'development' ? {
+        originalError: error.originalError || error.message,
+        stack: error.stack?.substring(0, 200)
+      } : undefined
     });
   }
 });
@@ -417,6 +528,22 @@ router.post('/confirm-upload', async (req, res) => {
     avaliacao.audioSent = true;
     avaliacao.audioUpdatedAt = new Date();
     await avaliacao.save();
+
+    // Publicar mensagem no Pub/Sub para processamento do áudio
+    // NOTA: Isso garante que o Pub/Sub seja disparado mesmo se a notificação automática do bucket não estiver configurada
+    try {
+      if (avaliacao.nomeArquivoAudio) {
+        console.log(`📤 [confirm-upload] Publicando mensagem no Pub/Sub para arquivo: ${avaliacao.nomeArquivoAudio}`);
+        const messageId = await publishAudioToPubSub(avaliacao.nomeArquivoAudio);
+        console.log(`✅ [confirm-upload] Mensagem publicada no Pub/Sub com sucesso. Message ID: ${messageId}`);
+      } else {
+        console.warn(`⚠️ [confirm-upload] nomeArquivoAudio não encontrado na avaliação ${avaliacaoId}. Pulando publicação no Pub/Sub.`);
+      }
+    } catch (pubsubError) {
+      // Log do erro mas não falha a requisição (notificação automática do bucket pode funcionar)
+      console.error(`❌ [confirm-upload] Erro ao publicar mensagem no Pub/Sub:`, pubsubError.message);
+      console.error(`⚠️ [confirm-upload] Continuando... A notificação automática do bucket pode disparar o processamento.`);
+    }
 
     if (global.emitTraffic) {
       global.emitTraffic('POST /api/audio-analise/confirm-upload', 'SUCCESS', `Upload confirmado para avaliacaoId: ${avaliacaoId}`);

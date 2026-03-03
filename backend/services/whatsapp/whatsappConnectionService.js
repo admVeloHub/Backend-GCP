@@ -1,12 +1,25 @@
 /**
  * VeloHub SKYNET - WhatsApp Connection Service
- * VERSION: v2.0.7 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * VERSION: v2.0.9 | DATE: 2025-02-24 | AUTHOR: VeloHub Development Team
  * 
  * Serviço genérico para gerenciamento de conexão WhatsApp via Baileys
  * Suporta múltiplas conexões independentes
  * Integra funcionalidades da API WHATSAPP (reações, replies, grupos, health checks)
  * 
- * Mudanças v2.0.6:
+ * Mudanças v2.0.9:
+ * - CORRIGIDO ERRO 405: Usando versão específica do PR #2365 (github:kobie3717/Baileys#fix/405-platform-macos)
+ * - WhatsApp agora rejeita Platform.WEB e requer Platform.MACOS para novos pareamentos
+ * - Alterado browser para Browsers.macOS('Chrome') conforme correção do PR
+ * - A correção foi feita internamente no Baileys mudando Platform.WEB -> Platform.MACOS
+ * 
+ * Mudanças v2.0.8:
+ * - CORRIGIDO LOOP INFINITO DE RECONEXÃO: Erro 405 (Method Not Allowed) NÃO reconecta automaticamente
+ * - Adicionado contador de tentativas de reconexão (máximo 5 tentativas antes de parar)
+ * - Prevenção de listeners duplicados: remove listener anterior antes de criar novo
+ * - Erros 401 e 405 não reconectam automaticamente - requerem ação manual
+ * - Reset de contador de tentativas ao conectar com sucesso ou desconectar manualmente
+ * 
+ * Mudanças v2.0.7:
  * - CORRIGIDO LOOP INFINITO: Erro 401 (não autorizado) NÃO reconecta automaticamente
  * - Quando recebe 401, limpa credenciais e para - permite gerar novo QR manualmente
  * - Prevenção de múltiplas conexões simultâneas: verifica flag reconnecting antes de conectar
@@ -53,7 +66,7 @@
  * - Função agora suporta tanto string JID quanto objeto com participant/remoteJid
  */
 
-const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode');
 const MongoAuthAdapter = require('./mongoAuthAdapter');
@@ -66,6 +79,9 @@ class WhatsAppConnectionService {
     this.reconnecting = false;
     this.reconnectStartTime = null; // Timestamp do início da reconexão
     this.manualDisconnect = false; // Flag para indicar se desconexão foi manual
+    this.reconnectAttempts = 0; // Contador de tentativas de reconexão
+    this.maxReconnectAttempts = 5; // Máximo de tentativas antes de parar
+    this.connectionUpdateHandler = null; // Referência ao handler para poder remover
     this.currentQR = null;
     this.qrImageBase64 = null;
     this.qrExpiresAt = null;
@@ -226,6 +242,12 @@ class WhatsAppConnectionService {
     this.isConnected = false;
     this.connectionStatus = 'connecting';
     
+    // Resetar contador de tentativas apenas se não for uma reconexão automática
+    // (mantém contador se estiver em loop de reconexão)
+    if (this.reconnectAttempts === 0) {
+      // Primeira tentativa ou reset manual
+    }
+    
     try {
       console.log(`[WHATSAPP:${this.connectionId}] Iniciando conexão Baileys...`);
       
@@ -235,7 +257,7 @@ class WhatsAppConnectionService {
       this.sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        browser: ['Chrome', 'Ubuntu', '20.04'],
+        browser: Browsers.macOS('Chrome'), // Usar macOS para evitar erro 405 (PR #2365)
         keepAliveIntervalMs: 30000, // Aumentado para 30s para manter conexão mais ativa
         syncFullHistory: false, // Desabilitado para reduzir carga e evitar desconexões
         connectTimeoutMs: 120000, // Aumentado para 120s
@@ -252,6 +274,15 @@ class WhatsAppConnectionService {
       // Listener de atualização de credenciais
       this.sock.ev.on('creds.update', saveCreds);
       
+      // Remover listener anterior se existir (evitar múltiplos listeners)
+      if (this.connectionUpdateHandler) {
+        try {
+          this.sock.ev.off('connection.update', this.connectionUpdateHandler);
+        } catch (err) {
+          // Ignorar erro se não conseguir remover (pode não existir)
+        }
+      }
+      
       // Tratamento de erros para evitar desconexões automáticas
       this.sock.ev.on('error', (error) => {
         console.error(`[WHATSAPP:${this.connectionId}] ⚠️ Erro no socket (não deve causar desconexão):`, error?.message || error);
@@ -260,12 +291,24 @@ class WhatsAppConnectionService {
       });
       
       // Listener de atualização de conexão
-      this.sock.ev.on('connection.update', async (update) => {
+      this.connectionUpdateHandler = async (update) => {
         const { connection, lastDisconnect, qr } = update;
         
         // Log para debug: verificar todos os estados de conexão
         if (connection) {
           console.log(`[WHATSAPP:${this.connectionId}] 🔄 connection.update: ${connection}`);
+          
+          // Log detalhado quando recebe QR
+          if (qr) {
+            console.log(`[WHATSAPP:${this.connectionId}] 📱 QR recebido no evento connection.update`);
+          }
+          
+          // Log detalhado quando fecha conexão
+          if (connection === 'close' && lastDisconnect) {
+            const reason = lastDisconnect?.error?.output?.statusCode;
+            const errorMessage = lastDisconnect?.error?.message || '';
+            console.log(`[WHATSAPP:${this.connectionId}] 🔴 Conexão fechada - Reason: ${reason}, Message: ${errorMessage}`);
+          }
         }
         
         // Verificar se já está conectado mesmo sem evento 'open' (pode acontecer com credenciais válidas)
@@ -319,6 +362,7 @@ class WhatsAppConnectionService {
         if (connection === 'open') {
           this.isConnected = true;
           this.reconnecting = false;
+          this.reconnectAttempts = 0; // Resetar contador ao conectar com sucesso
           this.connectionStatus = 'connected';
           this.currentQR = null;
           this.qrImageBase64 = null;
@@ -385,27 +429,61 @@ class WhatsAppConnectionService {
               console.error(`[WHATSAPP:${this.connectionId}] Erro ao limpar credenciais:`, err.message);
             }
             
+            // Resetar contador de tentativas
+            this.reconnectAttempts = 0;
+            
             // NÃO reconectar automaticamente - parar aqui
             return;
           }
           
-          // Para outros erros (não 401), reconectar após delay
-          console.warn(`[WHATSAPP:${this.connectionId}] ⚠️ Desconexão automática detectada (${reason}). Reconectando após delay...`);
+          // Verificar se foi erro 405 (Method Not Allowed / Rate Limiting) - NÃO RECONECTAR AUTOMATICAMENTE
+          if (reason === 405) {
+            console.error(`[WHATSAPP:${this.connectionId}] ❌ Erro 405 (Method Not Allowed / Rate Limiting) detectado.`);
+            console.error(`[WHATSAPP:${this.connectionId}] NÃO reconectando automaticamente - aguarde antes de tentar novamente manualmente.`);
+            
+            // Resetar contador de tentativas
+            this.reconnectAttempts = 0;
+            
+            // NÃO reconectar automaticamente - parar aqui
+            return;
+          }
+          
+          // Incrementar contador de tentativas ANTES de verificar limite
+          this.reconnectAttempts++;
+          
+          // Verificar limite de tentativas de reconexão
+          if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            console.error(`[WHATSAPP:${this.connectionId}] ❌ Limite de tentativas de reconexão atingido (${this.maxReconnectAttempts}). Parando reconexão automática.`);
+            console.error(`[WHATSAPP:${this.connectionId}] Para reconectar, use o método connect() manualmente.`);
+            this.reconnectAttempts = 0; // Resetar para próxima tentativa manual
+            return;
+          }
+          
+          // Para outros erros, reconectar após delay
+          console.warn(`[WHATSAPP:${this.connectionId}] ⚠️ Desconexão automática detectada (${reason}). Tentativa ${this.reconnectAttempts}/${this.maxReconnectAttempts}. Reconectando após delay...`);
           console.warn(`[WHATSAPP:${this.connectionId}] Erro:`, errorMessage);
           
           // Delay antes de reconectar para evitar loop infinito
           setTimeout(() => {
-            if (!this.manualDisconnect && !this.reconnecting) {
+            // Verificar novamente antes de reconectar (pode ter sido desconectado manualmente)
+            if (!this.manualDisconnect && !this.reconnecting && !this.isConnected) {
               console.log(`[WHATSAPP:${this.connectionId}] Reconectando automaticamente...`);
-              this.reconnecting = false; // Reset flag antes de reconectar
               this.connect().catch(err => {
                 console.error(`[WHATSAPP:${this.connectionId}] Erro ao reconectar automaticamente:`, err.message);
                 this.reconnecting = false; // Reset flag em caso de erro
               });
+            } else {
+              // Se foi desconectado manualmente ou já está reconectando, resetar contador
+              if (this.manualDisconnect || this.isConnected) {
+                this.reconnectAttempts = 0;
+              }
             }
           }, 3000); // Delay de 3 segundos antes de reconectar
         }
-      });
+      };
+      
+      // Registrar o handler
+      this.sock.ev.on('connection.update', this.connectionUpdateHandler);
       
       console.log(`[WHATSAPP:${this.connectionId}] Socket Baileys criado com sucesso`);
       
@@ -425,6 +503,15 @@ class WhatsAppConnectionService {
       // Marcar como desconexão manual
       this.manualDisconnect = true;
       
+      // Remover listener antes de desconectar
+      if (this.sock && this.connectionUpdateHandler) {
+        try {
+          this.sock.ev.off('connection.update', this.connectionUpdateHandler);
+        } catch (err) {
+          // Ignorar erro
+        }
+      }
+      
       if (this.sock) {
         await this.sock.end();
         this.sock = null;
@@ -435,6 +522,8 @@ class WhatsAppConnectionService {
       this.connectedNumberFormatted = null;
       this.listenersSetup = false; // Reset flag para próxima conexão
       this.reconnecting = false;
+      this.reconnectAttempts = 0; // Resetar contador
+      this.connectionUpdateHandler = null;
       console.log(`[WHATSAPP:${this.connectionId}] Desconectado manualmente. Para reconectar, use o método connect() manualmente.`);
     } catch (error) {
       console.error(`[WHATSAPP:${this.connectionId}] Erro ao desconectar:`, error);
@@ -451,6 +540,15 @@ class WhatsAppConnectionService {
       
       // Marcar como desconexão manual
       this.manualDisconnect = true;
+      
+      // Remover listener antes de desconectar
+      if (this.sock && this.connectionUpdateHandler) {
+        try {
+          this.sock.ev.off('connection.update', this.connectionUpdateHandler);
+        } catch (err) {
+          // Ignorar erro
+        }
+      }
       
       // Desconectar socket atual
       if (this.sock) {
@@ -475,6 +573,8 @@ class WhatsAppConnectionService {
       this.qrExpiresAt = null;
       this.listenersSetup = false; // Reset flag para próxima conexão
       this.reconnecting = false;
+      this.reconnectAttempts = 0; // Resetar contador
+      this.connectionUpdateHandler = null;
       
       // NÃO reconectar automaticamente - usuário deve chamar connect() manualmente
       console.log(`[WHATSAPP:${this.connectionId}] Logout realizado. Para reconectar, use o método connect() manualmente.`);

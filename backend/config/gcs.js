@@ -1,4 +1,7 @@
-// VERSION: v1.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.9.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
+// CHANGELOG: 
+// v1.9.0 - publishAudioToPubSub agora usa as mesmas credenciais do GCS (Service Account Key) para garantir autenticação correta
+// v1.8.0 - Adicionada validação de credenciais GCP antes de gerar Signed URLs, melhoradas mensagens de erro para problemas de autenticação
 const { Storage } = require('@google-cloud/storage');
 const { PubSub } = require('@google-cloud/pubsub');
 
@@ -77,12 +80,27 @@ const initializeGCS = () => {
     // Se GCP_SERVICE_ACCOUNT_KEY estiver definido, usar credenciais do arquivo
     // Caso contrário, usar Application Default Credentials (ADC)
     if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
-      const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
-      storage = new Storage({
-        projectId: GCP_PROJECT_ID,
-        credentials: credentials
-      });
+      try {
+        const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+        
+        // Validar que credentials contém client_email (necessário para Signed URLs)
+        if (!credentials.client_email) {
+          console.error('❌ [GCS CONFIG] GCP_SERVICE_ACCOUNT_KEY não contém client_email. Signed URLs não funcionarão.');
+          throw new Error('GCP_SERVICE_ACCOUNT_KEY deve conter um objeto JSON com client_email');
+        }
+        
+        storage = new Storage({
+          projectId: GCP_PROJECT_ID,
+          credentials: credentials
+        });
+        console.log('✅ [GCS CONFIG] Storage inicializado com Service Account Key');
+      } catch (parseError) {
+        console.error('❌ [GCS CONFIG] Erro ao parsear GCP_SERVICE_ACCOUNT_KEY:', parseError.message);
+        throw new Error(`GCP_SERVICE_ACCOUNT_KEY inválido: ${parseError.message}`);
+      }
     } else {
+      console.warn('⚠️ [GCS CONFIG] GCP_SERVICE_ACCOUNT_KEY não definido. Tentando usar ADC (Application Default Credentials).');
+      console.warn('⚠️ [GCS CONFIG] NOTA: Signed URLs podem falhar sem Service Account Key configurado.');
       storage = new Storage({
         projectId: GCP_PROJECT_ID
         // ADC será usado automaticamente
@@ -205,13 +223,49 @@ const validateFileSize = (fileSize, fileType = 'audio') => {
  */
 const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 15) => {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:207',message:'generateUploadSignedUrl entry',data:{fileName,mimeType},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+    
+    // Validar credenciais antes de prosseguir
+    // NOTA: Signed URLs requerem Service Account Key com client_email
+    // ADC (Application Default Credentials) não funciona para Signed URLs
+    if (!process.env.GCP_SERVICE_ACCOUNT_KEY) {
+      const errorMsg = 'GCP_SERVICE_ACCOUNT_KEY não está configurado. Configure esta variável no arquivo .env com o JSON completo da Service Account Key do GCP (deve conter client_email). Application Default Credentials não suportam Signed URLs.';
+      console.error('❌ [generateUploadSignedUrl]', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Validar que o JSON contém client_email
+    try {
+      const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+      if (!credentials.client_email) {
+        const errorMsg = 'GCP_SERVICE_ACCOUNT_KEY não contém client_email. Verifique se o JSON da Service Account Key está completo.';
+        console.error('❌ [generateUploadSignedUrl]', errorMsg);
+        throw new Error(errorMsg);
+      }
+    } catch (parseError) {
+      if (parseError.message.includes('client_email')) {
+        throw parseError; // Re-lançar erro de client_email
+      }
+      const errorMsg = `GCP_SERVICE_ACCOUNT_KEY inválido (não é JSON válido): ${parseError.message}`;
+      console.error('❌ [generateUploadSignedUrl]', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
     // Validar tipo de arquivo
     const typeValidation = validateFileType(mimeType, fileName);
     if (!typeValidation.valid) {
       throw new Error(typeValidation.error);
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:214',message:'before getBucket',data:{},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const bucket = getBucket();
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:215',message:'after getBucket',data:{hasBucket:!!bucket,bucketName:bucket?.name},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     
     // Gerar nome único para o arquivo
     const timestamp = Date.now();
@@ -229,7 +283,13 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
     };
 
     // Gerar Signed URL
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:232',message:'before getSignedUrl',data:{uniqueFileName,options:JSON.stringify(options)},timestamp:Date.now(),runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const [url] = await file.getSignedUrl(options);
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:233',message:'after getSignedUrl',data:{hasUrl:!!url},timestamp:Date.now(),runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     return {
       url,
@@ -238,7 +298,18 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
       expiresIn: expirationMinutes * 60 // segundos
     };
   } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'gcs.js:241',message:'generateUploadSignedUrl catch',data:{errorMessage:error?.message,errorStack:error?.stack?.substring(0,500),errorName:error?.name},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     console.error('❌ Erro ao gerar Signed URL:', error);
+    
+    // Melhorar mensagem de erro para credenciais ausentes
+    if (error.message && error.message.includes('client_email')) {
+      const improvedError = new Error('Credenciais do GCP não configuradas corretamente. Verifique se GCP_SERVICE_ACCOUNT_KEY está definido nas variáveis de ambiente com um JSON válido contendo client_email.');
+      improvedError.originalError = error.message;
+      throw improvedError;
+    }
+    
     throw error;
   }
 };
@@ -494,8 +565,27 @@ const publishAudioToPubSub = async (fileName, bucketName = null) => {
     const targetBucket = bucketName || GCS_BUCKET_NAME;
     const topicName = process.env.PUBSUB_TOPIC_NAME || 'qualidade_audio_envio';
 
-    // Inicializar cliente Pub/Sub
-    const pubsub = new PubSub({ projectId: GCP_PROJECT_ID });
+    // Inicializar cliente Pub/Sub com as mesmas credenciais do GCS
+    let pubsub;
+    if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
+      try {
+        const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+        pubsub = new PubSub({ 
+          projectId: GCP_PROJECT_ID,
+          credentials: credentials
+        });
+        console.log('✅ [publishAudioToPubSub] Pub/Sub inicializado com Service Account Key');
+      } catch (parseError) {
+        console.error('❌ [publishAudioToPubSub] Erro ao parsear credenciais:', parseError.message);
+        // Tentar com ADC como fallback
+        pubsub = new PubSub({ projectId: GCP_PROJECT_ID });
+      }
+    } else {
+      // Usar Application Default Credentials (ADC)
+      pubsub = new PubSub({ projectId: GCP_PROJECT_ID });
+      console.log('⚠️ [publishAudioToPubSub] Usando ADC (Application Default Credentials)');
+    }
+    
     const topic = pubsub.topic(topicName);
 
     // Verificar se o tópico existe

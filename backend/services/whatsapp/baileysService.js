@@ -1,10 +1,16 @@
 /**
  * VeloHub SKYNET - WhatsApp Baileys Service
- * VERSION: v1.1.5 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * VERSION: v1.1.6 | DATE: 2025-02-24 | AUTHOR: VeloHub Development Team
  * 
  * Serviço para gerenciamento de conexão WhatsApp via Baileys
  * Integrado ao SKYNET para uso pelo VeloHub e Console
  * Agora usa MongoDB (hub_escalacoes.auth) para persistência de credenciais
+ * 
+ * Mudanças v1.1.6:
+ * - CORRIGIDO ERRO 405: Usando versão específica do PR #2365 (github:kobie3717/Baileys#fix/405-platform-macos)
+ * - WhatsApp agora rejeita Platform.WEB e requer Platform.MACOS para novos pareamentos
+ * - Alterado browser para Browsers.macOS('Chrome') conforme correção do PR
+ * - A correção foi feita internamente no Baileys mudando Platform.WEB -> Platform.MACOS
  * 
  * Mudanças v1.1.5:
  * - Adicionada função extractJidNumber() para extrair corretamente número do JID
@@ -29,7 +35,7 @@
  * - Verificação adicional se socket foi encerrado antes de enviar mensagem
  */
 
-const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode');
 const MongoAuthAdapter = require('./mongoAuthAdapter');
@@ -109,7 +115,7 @@ async function connect() {
     sock = makeWASocket({
       auth: state,
       logger: pino({ level: 'silent' }),
-      browser: ['Chrome', 'Ubuntu', '20.04'],
+      browser: Browsers.macOS('Chrome'), // Usar macOS para evitar erro 405 (PR #2365)
       keepAliveIntervalMs: 10000,
       syncFullHistory: true,
       connectTimeoutMs: 60000,

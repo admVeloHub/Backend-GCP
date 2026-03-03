@@ -1,5 +1,7 @@
-// VERSION: v5.13.0 | DATE: 2026-02-23 | AUTHOR: VeloHub Development Team
+// VERSION: v5.15.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.15.0 - Adicionada validação de ObjectId no endpoint DELETE /avaliacoes/:id, melhorado tratamento de erro 404 com mais informações de debug
+// v5.14.0 - CORREÇÃO CRÍTICA: Campos de áudio (audioSent, audioTreated, nomeArquivoAudio) agora são explicitamente inicializados como false/null na criação de avaliações novas para evitar bloqueio incorreto de uploads
 // v5.13.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
 // v5.12.0 - Corrigidos valores de pontuação: escutaAtiva (15→10), clarezaObjetividade (15→10), empatiaCordialidade (15→10), procedimentoIncorreto (-60→-100). Adicionados logs detalhados para debug do cálculo de pontuação.
 // v5.11.4 - Corrigido cálculo de pontuação: conformidadeTicket agora subtrai 15 pontos (era positivo, agora é negativo).
@@ -1119,8 +1121,21 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     // Calcular pontuação total usando nova função
     avaliacaoData.pontuacaoTotal = calcularPontuacao(avaliacaoData);
     
+    // IMPORTANTE: Garantir que campos de áudio sejam explicitamente inicializados como false
+    // Isso previne problemas onde avaliações novas são bloqueadas incorretamente
+    avaliacaoData.audioSent = false;
+    avaliacaoData.audioTreated = false;
+    avaliacaoData.nomeArquivoAudio = null;
+    avaliacaoData.audioCreatedAt = null;
+    avaliacaoData.audioUpdatedAt = null;
+    
     // Log detalhado após o cálculo
     console.log('📊 [POST /avaliacoes] Pontuação calculada:', avaliacaoData.pontuacaoTotal);
+    console.log('📊 [POST /avaliacoes] Campos de áudio inicializados:', {
+      audioSent: avaliacaoData.audioSent,
+      audioTreated: avaliacaoData.audioTreated,
+      nomeArquivoAudio: avaliacaoData.nomeArquivoAudio
+    });
     console.log('📊 [POST /avaliacoes] Confirmando conformidadeTicket foi processado:', {
       conformidadeTicket: avaliacaoData.conformidadeTicket,
       pontuacaoFinal: avaliacaoData.pontuacaoTotal
@@ -1226,14 +1241,43 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
 router.delete('/avaliacoes/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'qualidade.js:1243',message:'DELETE avaliacoes entry',data:{id,idType:typeof id,idLength:id?.length},timestamp:Date.now(),runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     console.log(`[QUALIDADE-AVALIACOES] ${new Date().toISOString()} - DELETE /avaliacoes/${id} - PROCESSING`);
     
+    // Validar ObjectId antes de buscar (mesmo padrão usado em outros endpoints)
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'qualidade.js:1250',message:'invalid ObjectId',data:{id},timestamp:Date.now(),runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return res.status(400).json({
+        success: false,
+        message: 'ID inválido'
+      });
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'qualidade.js:1256',message:'before findByIdAndDelete',data:{id},timestamp:Date.now(),runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const avaliacaoDeletada = await QualidadeAvaliacao.findByIdAndDelete(id);
+    // #region agent log
+    fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'qualidade.js:1247',message:'after findByIdAndDelete',data:{found:!!avaliacaoDeletada,id:avaliacaoDeletada?._id},timestamp:Date.now(),runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     
     if (!avaliacaoDeletada) {
+      // #region agent log
+      fetch('http://127.0.0.1:7621/ingest/8e27b4c3-0140-42a6-b4bc-2e9c16a86c7a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'17a57b'},body:JSON.stringify({sessionId:'17a57b',location:'qualidade.js:1258',message:'avaliacao not found',data:{id,idType:typeof id,idLength:id?.length},timestamp:Date.now(),runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Verificar se existe avaliação com este ID (pode ter sido deletada anteriormente)
+      const avaliacaoExistente = await QualidadeAvaliacao.findById(id);
+      console.log(`[QUALIDADE-AVALIACOES] DELETE /avaliacoes/${id} - Avaliação não encontrada. Existe no banco: ${!!avaliacaoExistente}`);
+      
       return res.status(404).json({
         success: false,
-        message: 'Avaliação não encontrada'
+        message: 'Avaliação não encontrada',
+        id: id
       });
     }
     

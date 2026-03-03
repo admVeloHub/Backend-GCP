@@ -1,6 +1,7 @@
 /**
  * VeloHub SKYNET - WhatsApp API Routes
- * VERSION: v2.1.4 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+ * VERSION: v2.1.5 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
+ * CHANGELOG: v2.1.5 - Melhorado tratamento de erro 503 com informações mais detalhadas sobre estado da conexão WhatsApp
  * 
  * Rotas para gerenciamento e uso do WhatsApp integrado
  * Suporta múltiplas conexões independentes (requisicoes-produto e velodesk)
@@ -209,17 +210,27 @@ function createConnectionRoutes(connectionId) {
       service.qrExpiresAt = null;
       
       // Forçar conexão
+      console.log(`[WHATSAPP API:${connectionId}] Chamando service.connect()...`);
       await service.connect();
+      console.log(`[WHATSAPP API:${connectionId}] service.connect() concluído. Estado: isConnected=${service.isConnected}, hasQR=${!!service.currentQR}`);
       
-      // Aguardar até QR ser gerado (máximo 10 segundos)
+      // Aguardar até QR ser gerado (máximo 15 segundos - aumentado para dar mais tempo)
       let attempts = 0;
-      const maxAttempts = 20; // 20 tentativas de 500ms = 10 segundos
+      const maxAttempts = 30; // 30 tentativas de 500ms = 15 segundos
       while (!service.currentQR && attempts < maxAttempts && !service.isConnected) {
         await new Promise(resolve => setTimeout(resolve, 500));
         attempts++;
+        
+        // Log a cada 5 tentativas para debug
+        if (attempts % 5 === 0) {
+          console.log(`[WHATSAPP API:${connectionId}] Aguardando QR... Tentativa ${attempts}/${maxAttempts}. Estado: isConnected=${service.isConnected}, hasQR=${!!service.currentQR}, connectionStatus=${service.connectionStatus}`);
+        }
       }
       
+      console.log(`[WHATSAPP API:${connectionId}] Finalizado aguardo. Estado final: isConnected=${service.isConnected}, hasQR=${!!service.currentQR}, attempts=${attempts}`);
+      
       if (service.currentQR) {
+        console.log(`[WHATSAPP API:${connectionId}] ✅ QR code gerado com sucesso!`);
         res.json({
           success: true,
           message: 'Conexão iniciada. QR code gerado.',
@@ -227,6 +238,7 @@ function createConnectionRoutes(connectionId) {
           hasQR: true
         });
       } else if (service.isConnected) {
+        console.log(`[WHATSAPP API:${connectionId}] ✅ Conexão estabelecida (sem QR necessário)`);
         res.json({
           success: true,
           message: 'Conexão estabelecida.',
@@ -234,11 +246,17 @@ function createConnectionRoutes(connectionId) {
           hasQR: false
         });
       } else {
+        // Verificar se houve erro 405
+        const status = service.getStatus();
+        console.warn(`[WHATSAPP API:${connectionId}] ⚠️ QR não gerado após ${attempts} tentativas. Status: ${status.status}`);
+        
         res.json({
-          success: true,
-          message: 'Conexão iniciada. QR code será gerado em breve. Aguarde alguns segundos.',
+          success: false,
+          message: 'QR code não foi gerado. Isso pode ocorrer devido ao erro 405 (WhatsApp rejeitando Platform.WEB). Aguarde o PR #2365 ser mergeado ou tente novamente mais tarde.',
           connected: false,
-          hasQR: false
+          hasQR: false,
+          error: 'QR_NOT_GENERATED',
+          status: status.status
         });
       }
     } catch (error) {
@@ -630,7 +648,18 @@ router.post('/send', async (req, res) => {
     const service = getConnectionService('requisicoes-produto');
     if (service.error) {
       console.error(`[WHATSAPP API] Erro ao obter serviço:`, service.message);
-      return res.status(503).json({ ok: false, error: `Serviço WhatsApp não disponível: ${service.message}` });
+      const manager = getWhatsAppManager();
+      const availableConnections = manager.listConnections ? manager.listConnections() : [];
+      
+      return res.status(503).json({ 
+        ok: false, 
+        error: `Serviço WhatsApp não disponível: ${service.message}`,
+        connectionId: 'requisicoes-produto',
+        availableConnections: availableConnections,
+        suggestion: availableConnections.length > 0 
+          ? `Conexões disponíveis: ${availableConnections.join(', ')}`
+          : 'Nenhuma conexão WhatsApp disponível. Verifique a inicialização do servidor.'
+      });
     }
     
     // Log detalhado do estado da conexão
@@ -693,8 +722,30 @@ router.post('/send', async (req, res) => {
     
     // Verificação simples como no API WHATSAPP que funciona
     if (!service.isConnected || !service.sock) {
-      console.error(`[WHATSAPP API] WhatsApp desconectado. isConnected: ${service.isConnected}, hasSock: ${!!service.sock}, hasSockUser: ${!!service.sock?.user}, connectionStatus: ${service.connectionStatus}`);
-      return res.status(503).json({ ok: false, error: 'WhatsApp desconectado' });
+      const connectionDetails = {
+        isConnected: service.isConnected,
+        hasSock: !!service.sock,
+        hasSockUser: !!service.sock?.user,
+        connectionStatus: service.connectionStatus,
+        connectedNumber: service.connectedNumber || null
+      };
+      
+      console.error(`[WHATSAPP API] WhatsApp desconectado. Detalhes:`, connectionDetails);
+      
+      // Mensagem de erro mais informativa
+      let errorMessage = 'WhatsApp desconectado';
+      if (service.connectionStatus === 'connecting') {
+        errorMessage = 'WhatsApp está conectando. Aguarde alguns instantes e tente novamente.';
+      } else if (service.connectionStatus === 'disconnected') {
+        errorMessage = 'WhatsApp desconectado. Verifique a conexão no módulo de configuração do WhatsApp.';
+      }
+      
+      return res.status(503).json({ 
+        ok: false, 
+        error: errorMessage,
+        connectionStatus: service.connectionStatus,
+        details: connectionDetails
+      });
     }
     
     const result = await service.sendMessage(
@@ -713,9 +764,20 @@ router.post('/send', async (req, res) => {
       });
     } else {
       console.error(`[WHATSAPP API] Erro ao enviar mensagem:`, result.error);
+      
+      // Verificar se o erro é relacionado à conexão
+      const errorMessage = result.error || 'Erro ao enviar mensagem';
+      const isConnectionError = errorMessage.toLowerCase().includes('disconnect') || 
+                                errorMessage.toLowerCase().includes('connection') ||
+                                errorMessage.toLowerCase().includes('socket');
+      
       res.status(503).json({
         ok: false,
-        error: result.error || 'Erro ao enviar mensagem'
+        error: errorMessage,
+        connectionIssue: isConnectionError,
+        suggestion: isConnectionError 
+          ? 'Verifique a conexão WhatsApp no módulo de configuração.'
+          : 'Tente novamente em alguns instantes.'
       });
     }
   } catch (error) {

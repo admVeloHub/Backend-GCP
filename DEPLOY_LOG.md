@@ -1,5 +1,43 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2025-03-03
+
+**Data/Hora:** 2025-03-03  
+**Tipo:** GitHub Push  
+**Versão:** v2.8.0 (audioAnalise.js), v1.9.0 (gcs.js), v5.15.0 (qualidade.js)  
+**Repositório:** admVeloHub/back-skynet  
+**Branch:** main  
+
+### Descrição:
+Implementação de publicação manual no Pub/Sub e melhorias no módulo de qualidade de áudio:
+
+**Mudanças Principais:**
+
+**Pub/Sub - Publicação Manual:**
+- Adicionada publicação manual no Pub/Sub após confirmação de upload (`confirm-upload`)
+- Garante que o Pub/Sub seja disparado mesmo se a notificação automática do bucket não estiver configurada
+- `publishAudioToPubSub` agora usa as mesmas credenciais do GCS (Service Account Key)
+- Logs detalhados para debug de publicação no Pub/Sub
+
+**Validação e Tratamento de Erros:**
+- Adicionada validação de ObjectId no endpoint DELETE `/avaliacoes/:id`
+- Melhorado tratamento de erro 404 com mais informações de debug
+- Validação antecipada de credenciais GCP antes de gerar Signed URLs
+- Mensagens de erro mais específicas para problemas de credenciais GCP
+
+**Arquivos Modificados:**
+- `backend/routes/audioAnalise.js` (v2.7.0 → v2.8.0) - Publicação manual no Pub/Sub após confirm-upload
+- `backend/config/gcs.js` (v1.8.0 → v1.9.0) - publishAudioToPubSub usa credenciais do GCS
+- `backend/routes/qualidade.js` (v5.14.0 → v5.15.0) - Validação ObjectId no DELETE, melhor tratamento 404
+
+**Impacto:**
+- ✅ Pub/Sub disparado automaticamente após cada upload confirmado
+- ✅ Processamento de áudio garantido mesmo sem notificação automática do bucket
+- ✅ Melhor diagnóstico de erros com validação de ObjectId
+- ✅ Credenciais GCP validadas antes de operações críticas
+
+---
+
 ## GitHub Push - 2025-02-11
 
 **Data/Hora:** 2025-02-11  
