@@ -7,6 +7,7 @@
 **Versão:** v2.8.0 (audioAnalise.js), v1.9.0 (gcs.js), v5.15.0 (qualidade.js)  
 **Repositório:** admVeloHub/back-skynet  
 **Branch:** main  
+**Commit:** 8b67847  
 
 ### Descrição:
 Implementação de publicação manual no Pub/Sub e melhorias no módulo de qualidade de áudio:
