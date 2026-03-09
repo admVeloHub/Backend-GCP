@@ -1,5 +1,44 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2026-03-04
+
+**Data/Hora:** 2026-03-04  
+**Tipo:** GitHub Push  
+**Versão:** v1.13.0 (QualidadeFuncionario.js), v5.16.0 (qualidade.js)  
+**Repositório:** admVeloHub/back-skynet, admVeloHub/Backend-GCP  
+**Branch:** main  
+
+### Descrição:
+Implementação do campo "Tempo Real" (realTime) no schema e rotas de funcionários:
+
+**Mudanças Principais:**
+
+**Schema QualidadeFuncionario:**
+- Adicionado `realTime` ao array `validKeys` na validação do objeto `acessos`
+- Atualizada mensagem de validação para incluir `realTime`
+- Campo incluído no método `normalizeAcessos` para conversão de formato antigo (array) para novo (objeto)
+- Campo incluído no método estático `normalizeAcessosFormat` para normalização de respostas
+
+**Rotas qualidade.js:**
+- Adicionado `realTime` ao array `validKeys` no middleware `validateFuncionario`
+- Atualizadas mensagens de erro de validação para incluir `realTime`
+- Campo incluído nas funções `normalizarAcessosParaResposta` com valor padrão `false`
+- Campo processado nos endpoints POST e PUT para criação/atualização de funcionários
+- Campo incluído na lógica de reset de acessos para funcionários desligados/afastados
+
+**Arquivos Modificados:**
+- `backend/models/QualidadeFuncionario.js` (v1.12.0 → v1.13.0) - Adicionado realTime à validação e normalização
+- `backend/routes/qualidade.js` (v5.15.3 → v5.16.0) - Adicionado realTime às validações e processamento de dados
+
+**Impacto:**
+- ✅ Novo tipo de acesso disponível no schema MongoDB
+- ✅ Validação completa do campo realTime implementada
+- ✅ Compatibilidade mantida com dados antigos (formato array)
+- ✅ Campo tratado como booleano consistente com outros acessos
+- ✅ Normalização automática de formato antigo para novo formato
+
+---
+
 ## GitHub Push - 2025-03-03
 
 **Data/Hora:** 2025-03-03  
