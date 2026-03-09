@@ -5,8 +5,9 @@
 **Data/Hora:** 2026-03-04  
 **Tipo:** GitHub Push  
 **Versão:** v1.13.0 (QualidadeFuncionario.js), v5.16.0 (qualidade.js)  
-**Repositório:** admVeloHub/back-skynet, admVeloHub/Backend-GCP  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main  
+**Commit:** 374cb01  
 
 ### Descrição:
 Implementação do campo "Tempo Real" (realTime) no schema e rotas de funcionários:
