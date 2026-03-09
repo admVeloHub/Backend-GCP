@@ -1,5 +1,8 @@
-// VERSION: v5.15.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
+// VERSION: v5.15.3 | DATE: 2025-03-09 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.15.3 - CORREÇÃO CRÍTICA: Melhorado tratamento de dataContratado no endpoint POST /funcionarios: validação explícita para null/undefined/string vazia retornando erro 400 antes da conversão, validação de Date válida após conversão (não pode ser NaN), retorno de erro 400 com mensagem clara se data inválida antes de tentar salvar no MongoDB
+// v5.15.2 - Adicionados logs detalhados para debug no endpoint POST /funcionarios antes da criação da instância e do save(): log completo do funcionarioData, verificação de campos obrigatórios, log antes de criar instância, log antes de save(), e try/catch específico ao redor do save() para capturar erros específicos do MongoDB
+// v5.15.1 - Melhorado tratamento de erros no endpoint POST /funcionarios: adicionada detecção específica para ValidationError (400), erros de duplicação código 11000 (409), CastError (400), e stack trace limitado em desenvolvimento
 // v5.15.0 - Adicionada validação de ObjectId no endpoint DELETE /avaliacoes/:id, melhorado tratamento de erro 404 com mais informações de debug
 // v5.14.0 - CORREÇÃO CRÍTICA: Campos de áudio (audioSent, audioTreated, nomeArquivoAudio) agora são explicitamente inicializados como false/null na criação de avaliações novas para evitar bloqueio incorreto de uploads
 // v5.13.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
@@ -721,12 +724,29 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
     
     const funcionarioData = { ...req.body };
     
-    // Converter datas se fornecidas como strings
+    // Validação e conversão de dataContratado (obrigatório)
+    // Verificar se dataContratado é null, undefined ou string vazia
+    if (funcionarioData.dataContratado === null || funcionarioData.dataContratado === undefined || funcionarioData.dataContratado === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Data de contratação é obrigatória e não pode ser nula ou vazia'
+      });
+    }
+    
+    // Converter para Date
+    funcionarioData.dataContratado = new Date(funcionarioData.dataContratado);
+    
+    // Validar se a Date convertida é válida (não é NaN)
+    if (isNaN(funcionarioData.dataContratado.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Data de contratação inválida. Forneça uma data válida no formato correto'
+      });
+    }
+    
+    // Converter outras datas opcionais se fornecidas como strings
     if (funcionarioData.dataAniversario) {
       funcionarioData.dataAniversario = new Date(funcionarioData.dataAniversario);
-    }
-    if (funcionarioData.dataContratado) {
-      funcionarioData.dataContratado = new Date(funcionarioData.dataContratado);
     }
     if (funcionarioData.dataDesligamento) {
       funcionarioData.dataDesligamento = new Date(funcionarioData.dataDesligamento);
@@ -813,9 +833,79 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
       // Nota: Em produção, isso deve ser hasheado antes de salvar
     }
     
+    // ==================== LOGS DETALHADOS PARA DEBUG ====================
+    // 1. Log do objeto funcionarioData completo (JSON stringificado)
+    console.log('🔍 [DEBUG] funcionarioData completo:', JSON.stringify(funcionarioData, null, 2));
+    
+    // 2. Log de cada campo obrigatório para verificar se estão presentes
+    const camposObrigatorios = {
+      colaboradorNome: funcionarioData.colaboradorNome,
+      empresa: funcionarioData.empresa,
+      dataContratado: funcionarioData.dataContratado
+    };
+    console.log('🔍 [DEBUG] Campos obrigatórios:', {
+      colaboradorNome: {
+        presente: !!camposObrigatorios.colaboradorNome,
+        valor: camposObrigatorios.colaboradorNome,
+        tipo: typeof camposObrigatorios.colaboradorNome,
+        vazio: camposObrigatorios.colaboradorNome ? camposObrigatorios.colaboradorNome.trim() === '' : true
+      },
+      empresa: {
+        presente: !!camposObrigatorios.empresa,
+        valor: camposObrigatorios.empresa,
+        tipo: typeof camposObrigatorios.empresa,
+        vazio: camposObrigatorios.empresa ? camposObrigatorios.empresa.trim() === '' : true
+      },
+      dataContratado: {
+        presente: !!camposObrigatorios.dataContratado,
+        valor: camposObrigatorios.dataContratado,
+        tipo: typeof camposObrigatorios.dataContratado,
+        instanciaDate: camposObrigatorios.dataContratado instanceof Date,
+        dataValida: camposObrigatorios.dataContratado ? !isNaN(new Date(camposObrigatorios.dataContratado).getTime()) : false
+      }
+    });
+    
+    // 3. Log antes de criar a instância do modelo
+    console.log('🔍 [DEBUG] Antes de criar instância do modelo QualidadeFuncionario');
+    
     global.emitTraffic('Qualidade Funcionários', 'processing', 'Transmitindo para DB');
     const novoFuncionario = new QualidadeFuncionario(funcionarioData);
-    const funcionarioSalvo = await novoFuncionario.save();
+    
+    // 4. Log antes de chamar save()
+    console.log('🔍 [DEBUG] Instância criada. Antes de chamar save(). Dados da instância:', {
+      colaboradorNome: novoFuncionario.colaboradorNome,
+      empresa: novoFuncionario.empresa,
+      dataContratado: novoFuncionario.dataContratado,
+      _id: novoFuncionario._id,
+      isNew: novoFuncionario.isNew
+    });
+    
+    // 5. Try/catch específico ao redor do save() para capturar erros específicos do MongoDB
+    let funcionarioSalvo;
+    try {
+      funcionarioSalvo = await novoFuncionario.save();
+      console.log('🔍 [DEBUG] save() executado com sucesso. Funcionário salvo:', {
+        _id: funcionarioSalvo._id,
+        colaboradorNome: funcionarioSalvo.colaboradorNome
+      });
+    } catch (saveError) {
+      console.error('❌ [DEBUG] Erro específico no save() do MongoDB:', {
+        name: saveError.name,
+        message: saveError.message,
+        code: saveError.code,
+        errors: saveError.errors ? Object.keys(saveError.errors).map(key => ({
+          campo: key,
+          mensagem: saveError.errors[key].message,
+          tipo: saveError.errors[key].kind,
+          valor: saveError.errors[key].value
+        })) : null,
+        keyPattern: saveError.keyPattern,
+        keyValue: saveError.keyValue,
+        stack: saveError.stack
+      });
+      // Re-throw para ser capturado pelo catch externo
+      throw saveError;
+    }
     
     global.emitTraffic('Qualidade Funcionários', 'completed', 'Concluído - Funcionário criado com sucesso');
     global.emitLog('success', `POST /api/qualidade/funcionarios - Funcionário "${funcionarioSalvo.colaboradorNome}" criado com sucesso`);
@@ -842,10 +932,85 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
     global.emitTraffic('Qualidade Funcionários', 'error', 'Erro ao criar funcionário');
     global.emitLog('error', `POST /api/qualidade/funcionarios - Erro: ${error.message}`);
     console.error('[QUALIDADE-FUNCIONARIOS] Erro ao criar funcionário:', error);
-    res.status(500).json({
+    
+    // Detectar erro de validação do MongoDB (ValidationError)
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
+      }));
+      
+      const response = {
+        success: false,
+        message: 'Erro de validação ao criar funcionário',
+        errors: validationErrors
+      };
+      
+      // Em desenvolvimento, incluir detalhes adicionais
+      if (process.env.NODE_ENV === 'development') {
+        response.stack = error.stack?.split('\n').slice(0, 5).join('\n');
+      }
+      
+      return res.status(400).json(response);
+    }
+    
+    // Detectar erro de duplicação (código 11000 - unique index violation)
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0] || 'campo';
+      const duplicateValue = error.keyValue ? Object.values(error.keyValue)[0] : 'valor';
+      
+      const response = {
+        success: false,
+        message: `Já existe um funcionário com ${duplicateField} igual a "${duplicateValue}"`,
+        duplicateField: duplicateField,
+        duplicateValue: duplicateValue
+      };
+      
+      // Em desenvolvimento, incluir detalhes adicionais
+      if (process.env.NODE_ENV === 'development') {
+        response.stack = error.stack?.split('\n').slice(0, 5).join('\n');
+        response.errorDetails = {
+          code: error.code,
+          keyPattern: error.keyPattern,
+          keyValue: error.keyValue
+        };
+      }
+      
+      return res.status(409).json(response);
+    }
+    
+    // Detectar erro de cast (CastError)
+    if (error.name === 'CastError') {
+      const response = {
+        success: false,
+        message: `Tipo de dado inválido para o campo "${error.path}". Valor recebido: "${error.value}"`,
+        field: error.path,
+        receivedValue: error.value,
+        expectedType: error.kind || 'tipo válido'
+      };
+      
+      // Em desenvolvimento, incluir detalhes adicionais
+      if (process.env.NODE_ENV === 'development') {
+        response.stack = error.stack?.split('\n').slice(0, 5).join('\n');
+      }
+      
+      return res.status(400).json(response);
+    }
+    
+    // Outros erros - retornar erro genérico com detalhes em desenvolvimento
+    const response = {
       success: false,
       message: 'Erro interno do servidor ao criar funcionário'
-    });
+    };
+    
+    // Em desenvolvimento, incluir detalhes do erro (stack trace limitado)
+    if (process.env.NODE_ENV === 'development') {
+      response.error = error.message;
+      response.stack = error.stack?.split('\n').slice(0, 10).join('\n');
+      response.errorName = error.name;
+    }
+    
+    res.status(500).json(response);
   }
 });
 
