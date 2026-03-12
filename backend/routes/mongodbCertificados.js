@@ -1,11 +1,11 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2026-03-04 | AUTHOR: VeloHub Development Team
 const express = require('express');
 const router = express.Router();
 const { MongoClient, ObjectId } = require('mongodb');
 
 // Connection string do MongoDB - usando helper centralizado
 const { getMongoUri } = require('../config/mongodb');
-const DATABASE_NAME = process.env.VELOHUBCENTRAL_DB || 'velohubcentral';
+const DATABASE_NAME = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';
 const COLLECTION_NAME = 'curso_certificados';
 
 // GET /api/mongodb/certificados - Listar todos os certificados

@@ -540,6 +540,7 @@ router.get('/lista-atividades', async (req, res) => {
     }).lean();
     
     // Converter para formato esperado
+    // Quando há filtro de período, retornar TODAS as atividades do período (sem limite)
     const response = userActivities
       .filter(a => a.action === 'question_asked' && a.details?.question)
       .map(activity => ({
@@ -549,8 +550,8 @@ router.get('/lista-atividades', async (req, res) => {
         horario: new Date(activity.createdAt).toTimeString().split(' ')[0],
         acao: activity.action
       }))
-      .sort((a, b) => new Date(b.data + ' ' + b.horario) - new Date(a.data + ' ' + a.horario))
-      .slice(0, 100); // Limitar a 100 atividades
+      .sort((a, b) => new Date(b.data + ' ' + b.horario) - new Date(a.data + ' ' + a.horario));
+      // Removido .slice(0, 100) - retornar todas as atividades do período filtrado
     
     global.emitTraffic('Bot Análises', 'completed', 'Lista de atividades processada');
     global.emitJson(response);
