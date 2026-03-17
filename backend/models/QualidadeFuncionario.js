@@ -1,4 +1,5 @@
-// VERSION: v1.13.0 | DATE: 2026-03-09 | AUTHOR: VeloHub Development Team
+// VERSION: v1.14.0 | DATE: 2026-03-17 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.14.0 - Adicionado campo Sociais ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean}
 // CHANGELOG: v1.13.0 - Adicionado campo realTime ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, realTime: Boolean}
 // CHANGELOG: v1.12.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
 // CHANGELOG: v1.11.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
@@ -117,10 +118,10 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
       validator: function(v) {
         if (!v) return true; // Opcional
         
-        // Formato novo: objeto com Velohub, Console, Academy, Desk, Ouvidoria e/ou realTime (booleanos)
+        // Formato novo: objeto com Velohub, Console, Academy, Desk, Ouvidoria, Sociais e/ou realTime (booleanos)
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
-          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'realTime'];
+          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
         
@@ -135,7 +136,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         
         return false;
       },
-      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, realTime: Boolean} ou array de objetos [{sistema, perfil, ...}]'
+      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean} ou array de objetos [{sistema, perfil, ...}]'
     }
   },
   desligado: {
@@ -206,6 +207,9 @@ qualidadeFuncionarioSchema.methods.normalizeAcessos = function() {
       if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
         novoAcessos.Ouvidoria = true;
       }
+      if (acesso.sistema === 'Sociais' || acesso.sistema === 'sociais') {
+        novoAcessos.Sociais = true;
+      }
       if (acesso.sistema === 'realTime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
         novoAcessos.realTime = true;
       }
@@ -246,6 +250,9 @@ qualidadeFuncionarioSchema.statics.normalizeAcessosFormat = function(acessos) {
       }
       if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
         novoAcessos.Ouvidoria = true;
+      }
+      if (acesso.sistema === 'Sociais' || acesso.sistema === 'sociais') {
+        novoAcessos.Sociais = true;
       }
       if (acesso.sistema === 'realTime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
         novoAcessos.realTime = true;

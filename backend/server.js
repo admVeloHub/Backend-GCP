@@ -1,4 +1,5 @@
-// VERSION: v4.17.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+// VERSION: v4.18.0 | DATE: 2026-03-17 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.18.0 - Removidos WhatsApp Manager, dependência Baileys e API WhatsApp. Rotas /api/whatsapp retornam 410 Gone.
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
 try {
@@ -76,36 +77,6 @@ const uploadsRoutes = require('./routes/uploads');
 const sociaisRoutes = require('./routes/sociais');
 const aiServicesRoutes = require('./routes/aiServices');
 const emailRoutes = require('./routes/email');
-
-// Lazy require do WhatsApp para não bloquear startup se módulo não estiver disponível
-let whatsappRoutes = null;
-let whatsappManager = null;
-const getWhatsappRoutes = () => {
-  if (!whatsappRoutes) {
-    try {
-      whatsappRoutes = require('./routes/whatsapp');
-    } catch (error) {
-      console.error('⚠️ Erro ao carregar whatsappRoutes:', error.message);
-      console.error('⚠️ Rotas WhatsApp não estarão disponíveis');
-      whatsappRoutes = { error: true };
-    }
-  }
-  return whatsappRoutes;
-};
-
-const getWhatsAppManager = () => {
-  if (!whatsappManager) {
-    try {
-      const { getWhatsAppManager: getManager } = require('./services/whatsapp/whatsappManager');
-      whatsappManager = getManager();
-    } catch (error) {
-      console.error('⚠️ Erro ao carregar WhatsAppManager:', error.message);
-      console.error('⚠️ Serviço WhatsApp não estará disponível');
-      whatsappManager = { error: true, initialize: async () => {} };
-    }
-  }
-  return whatsappManager;
-};
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -225,22 +196,10 @@ app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
 app.use('/api/audio-analise', audioAnaliseRoutes);
 app.use('/api/uploads', uploadsRoutes);
-// Rotas WhatsApp com lazy loading
-try {
-  const whatsappRoutesLoaded = getWhatsappRoutes();
-  if (!whatsappRoutesLoaded.error) {
-    app.use('/api/whatsapp', whatsappRoutesLoaded);
-  } else {
-    app.use('/api/whatsapp', (req, res) => {
-      res.status(503).json({ success: false, error: 'Serviço WhatsApp não disponível' });
-    });
-  }
-} catch (error) {
-  console.error('⚠️ Erro ao registrar rotas WhatsApp:', error.message);
-  app.use('/api/whatsapp', (req, res) => {
-    res.status(503).json({ success: false, error: 'Serviço WhatsApp não disponível' });
-  });
-}
+// API WhatsApp removida - retorna 410 Gone
+app.use('/api/whatsapp', (req, res) => {
+  res.status(410).json({ success: false, error: 'API WhatsApp removida deste projeto' });
+});
 app.use('/api/sociais', sociaisRoutes);
 app.use('/api/ai-services', aiServicesRoutes);
 app.use('/api/email', emailRoutes);
@@ -426,22 +385,6 @@ const startServer = async () => {
     } catch (error) {
       console.error('⚠️ Erro ao conectar MongoDB (não crítico):', error.message);
       console.error('⚠️ Servidor continuará rodando, MongoDB pode ser conectado posteriormente');
-    }
-    
-    // Inicializar serviço WhatsApp (novo sistema de múltiplas conexões)
-    try {
-      const manager = getWhatsAppManager();
-      if (!manager.error) {
-        console.log('🔄 Inicializando WhatsAppManager (múltiplas conexões)...');
-        await manager.initialize();
-        console.log('✅ WhatsAppManager inicializado com sucesso');
-        console.log(`📱 Conexões disponíveis: ${manager.listConnections().join(', ')}`);
-      } else {
-        console.log('⚠️ WhatsAppManager não disponível (módulo não carregado)');
-      }
-    } catch (error) {
-      console.error('⚠️ Erro ao inicializar WhatsAppManager (não crítico):', error.message);
-      console.log('⚠️ WhatsApp pode ser inicializado posteriormente via endpoint');
     }
   });
   
