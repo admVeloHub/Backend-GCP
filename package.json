@@ -7,6 +7,8 @@
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
     "migrate-academy": "node backend/scripts/migrate-academy-data.js",
+    "buscar-resposta-bot": "node backend/scripts/buscar_resposta_bot.js",
+    "buscar-tabulacao-problema": "node backend/scripts/buscar_tabulacao_problema.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
