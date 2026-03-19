@@ -1,4 +1,7 @@
-// VERSION: v2.8.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
+// VERSION: v2.9.1 | DATE: 2026-03-19 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.9.1 - GET listar: normalização de auditoria isolada por item (try/catch) para não derrubar a rota inteira
+// CHANGELOG: v2.9.0 - auditoria: objeto { auditoriaFeita, corpoAuditoria }; GET result e PUT editar-auditoria normalizam legado string
+// CHANGELOG: v2.8.1 - reenviar-pubsub: resposta 500 inclui details (mensagem do erro) em development para diagnóstico
 // CHANGELOG: v2.8.0 - Adicionada publicação manual no Pub/Sub após confirmação de upload para garantir processamento mesmo sem notificação automática do bucket
 // CHANGELOG: 
 // v2.7.0 - Melhorado tratamento de erro 500: mensagens mais específicas para problemas de credenciais GCP, validação antecipada de credenciais
@@ -11,6 +14,47 @@ const router = express.Router();
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
 const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS, publishAudioToPubSub, fileExists } = require('../config/gcs');
+
+/**
+ * Normaliza campo auditoria para JSON (legado: string no Mongo | novo: objeto).
+ * @returns {{ auditoriaFeita: boolean, corpoAuditoria: string }}
+ */
+function normalizeAuditoriaForClient(raw) {
+  if (raw == null || raw === '') {
+    return { auditoriaFeita: false, corpoAuditoria: '' };
+  }
+  if (typeof raw === 'string') {
+    const corpo = raw;
+    const trimmed = corpo.trim();
+    return { auditoriaFeita: trimmed.length > 0, corpoAuditoria: corpo };
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    const corpo = raw.corpoAuditoria != null ? String(raw.corpoAuditoria) : '';
+    const trimmed = corpo.trim();
+    if (Object.prototype.hasOwnProperty.call(raw, 'auditoriaFeita')) {
+      return { auditoriaFeita: raw.auditoriaFeita === true, corpoAuditoria: corpo };
+    }
+    return { auditoriaFeita: trimmed.length > 0, corpoAuditoria: corpo };
+  }
+  return { auditoriaFeita: false, corpoAuditoria: '' };
+}
+
+/** Monta objeto a persistir a partir do body (corpoAuditoria preferencial; legado: auditoria string). */
+function buildAuditoriaPersistFromBody(body) {
+  let text = '';
+  if (Object.prototype.hasOwnProperty.call(body, 'corpoAuditoria')) {
+    text = body.corpoAuditoria == null ? '' : String(body.corpoAuditoria);
+  } else if (typeof body.auditoria === 'string') {
+    text = body.auditoria;
+  } else if (body.auditoria && typeof body.auditoria === 'object' && Object.prototype.hasOwnProperty.call(body.auditoria, 'corpoAuditoria')) {
+    text = body.auditoria.corpoAuditoria == null ? '' : String(body.auditoria.corpoAuditoria);
+  }
+  const trimmed = text.trim();
+  return {
+    auditoriaFeita: trimmed.length > 0,
+    corpoAuditoria: text
+  };
+}
 
 // POST /api/audio-analise/generate-upload-url - Gera Signed URL do GCS e cria registro com sent=true, treated=false
 router.post('/generate-upload-url', async (req, res) => {
@@ -464,9 +508,14 @@ router.get('/result/:id', async (req, res) => {
       });
     }
 
+    const payload = result.toObject ? result.toObject() : { ...result };
+    if (payload.auditoria !== undefined) {
+      payload.auditoria = normalizeAuditoriaForClient(payload.auditoria);
+    }
+
     res.json({
       success: true,
-      data: result
+      data: payload
     });
   } catch (error) {
     console.error('Erro ao buscar resultado:', error);
@@ -755,14 +804,17 @@ router.post('/reenviar-pubsub/:avaliacaoId', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao reenviar áudio para Pub/Sub:', error);
-    
+    console.error('[reenviar-pubsub] Stack:', error.stack);
+
     if (global.emitTraffic) {
       global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', error.message);
     }
-    
+
+    const isDev = process.env.NODE_ENV === 'development';
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor ao reenviar áudio'
+      error: 'Erro interno do servidor ao reenviar áudio',
+      details: isDev ? error.message : undefined
     });
   }
 });
@@ -1003,6 +1055,14 @@ router.get('/listar', async (req, res) => {
         })() : null,
         ano: resultObj.createdAt ? new Date(resultObj.createdAt).getFullYear() : null
       };
+
+      let auditoriaLista = { auditoriaFeita: false, corpoAuditoria: '' };
+      try {
+        auditoriaLista = normalizeAuditoriaForClient(resultObj.auditoria);
+      } catch (audErr) {
+        console.warn('[listar] Falha ao normalizar auditoria, usando vazio:', audErr?.message);
+      }
+      analiseMapeada.auditoria = auditoriaLista;
       
       analisesComColaborador.push(analiseMapeada);
     }
@@ -1208,6 +1268,69 @@ router.put('/:id/editar-analise', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor ao editar análise',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// PUT /api/audio-analise/:id/editar-auditoria - Persistir { auditoriaFeita, corpoAuditoria } (aceita legado body.auditoria string)
+router.put('/:id/editar-auditoria', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID da análise é obrigatório'
+      });
+    }
+
+    const hasCorpo = Object.prototype.hasOwnProperty.call(req.body, 'corpoAuditoria');
+    const hasLegacyString = typeof req.body.auditoria === 'string';
+    const hasLegacyObj = req.body.auditoria && typeof req.body.auditoria === 'object'
+      && Object.prototype.hasOwnProperty.call(req.body.auditoria, 'corpoAuditoria');
+
+    if (!hasCorpo && !hasLegacyString && !hasLegacyObj) {
+      return res.status(400).json({
+        success: false,
+        error: 'Envie corpoAuditoria (texto da auditoria) ou auditoria (string legada)'
+      });
+    }
+
+    const analise = await AudioAnaliseResult.findById(id);
+
+    if (!analise) {
+      return res.status(404).json({
+        success: false,
+        error: 'Análise não encontrada'
+      });
+    }
+
+    const auditoriaDoc = buildAuditoriaPersistFromBody(req.body);
+    analise.auditoria = auditoriaDoc;
+
+    await analise.save();
+
+    console.log(`[AUDITORIA] Campo auditoria atualizado para análise ${id}`, {
+      auditoriaFeita: auditoriaDoc.auditoriaFeita
+    });
+
+    const auditoriaNorm = normalizeAuditoriaForClient(analise.auditoria);
+
+    res.json({
+      success: true,
+      message: 'Auditoria salva com sucesso',
+      data: {
+        id: analise._id,
+        auditoria: auditoriaNorm
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR] Erro ao editar auditoria:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor ao salvar auditoria',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

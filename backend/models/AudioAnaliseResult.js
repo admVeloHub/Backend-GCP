@@ -1,4 +1,6 @@
-// VERSION: v2.1.0 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v2.3.0 | DATE: 2026-03-19 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.3.0 - Campo auditoria como Mixed: objeto { auditoriaFeita, corpoAuditoria }; legado String ainda lido nas rotas
+// CHANGELOG: v2.2.0 - Adicionado campo auditoria (String) para auditoria do gestor sobre a análise
 // CHANGELOG: v2.1.0 - Removido campo dominioAssunto, adicionados registroAtendimento e conformidadeTicket
 const mongoose = require('mongoose');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
@@ -102,6 +104,10 @@ const audioAnaliseResultSchema = new mongoose.Schema({
     type: Number,
     min: -160,
     max: 100
+  },
+  auditoria: { // { auditoriaFeita: boolean, corpoAuditoria: string } — Mixed aceita legado String no banco até regravar
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({ auditoriaFeita: false, corpoAuditoria: '' })
   },
   processingTime: {
     type: Number // em segundos
