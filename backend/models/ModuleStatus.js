@@ -1,5 +1,5 @@
-// VERSION: v2.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
-// CHANGELOG: v2.11.0 - Adicionado campo _dividaZero e removido _saudeSimplificada (reorganização)
+// VERSION: v2.12.0 | DATE: 2026-03-25 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.12.0 - Alinhado a LISTA_SCHEMAS (console_config.module_status): 8 serviços; removidos campos legados
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -24,72 +24,27 @@ const getConfigConnection = () => {
 // ✅ USAR CONEXÃO COMPARTILHADA para console_analises
 const { getAnalisesConnection } = require('../config/analisesConnection');
 
+const moduleStatusField = {
+  type: String,
+  default: 'on',
+  enum: ['on', 'off', 'revisao']
+};
+
 // Schema para status dos módulos (documento com _id: "status")
+// Campos conforme LISTA_SCHEMAS — console_config.module_status
 const moduleStatusSchema = new mongoose.Schema({
   _id: {
     type: String,
     required: true
   },
-  _trabalhador: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _pessoal: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _antecipacao: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _pgtoAntecip: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _irpf: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _seguroCred: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _seguroCel: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _saudeSimplificada: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _clubeVelotax: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  },
-  _dividaZero: {
-    type: String,
-    required: true,
-    default: 'on',
-    enum: ['on', 'off', 'revisao']
-  }
+  _pessoal: moduleStatusField,
+  _antecipacao: moduleStatusField,
+  _pgtoAntecip: moduleStatusField,
+  _seguroCred: moduleStatusField,
+  _seguroCel: moduleStatusField,
+  _perdaRenda: moduleStatusField,
+  _cupons: moduleStatusField,
+  _seguroPessoal: moduleStatusField
 }, {
   timestamps: true,
   collection: 'module_status'
@@ -122,15 +77,14 @@ const faqSchema = new mongoose.Schema({
 });
 
 // Índices para otimização do schema de status
-moduleStatusSchema.index({ _trabalhador: 1 });
 moduleStatusSchema.index({ _pessoal: 1 });
 moduleStatusSchema.index({ _antecipacao: 1 });
 moduleStatusSchema.index({ _pgtoAntecip: 1 });
-moduleStatusSchema.index({ _irpf: 1 });
 moduleStatusSchema.index({ _seguroCred: 1 });
 moduleStatusSchema.index({ _seguroCel: 1 });
-moduleStatusSchema.index({ _clubeVelotax: 1 });
-moduleStatusSchema.index({ _dividaZero: 1 });
+moduleStatusSchema.index({ _perdaRenda: 1 });
+moduleStatusSchema.index({ _cupons: 1 });
+moduleStatusSchema.index({ _seguroPessoal: 1 });
 moduleStatusSchema.index({ updatedAt: -1 });
 
 // Índices para otimização do schema FAQ

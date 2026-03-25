@@ -1,4 +1,5 @@
-// VERSION: v1.0.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2026-03-25 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.1.0 - Payloads de teste alinhados ao schema module_status atual
 const axios = require('axios');
 
 const API_BASE_URL = 'https://back-console.vercel.app/api';
@@ -27,12 +28,14 @@ async function testModuleStatusEndpoints() {
     
     const frontendData = {
       "_id": "status",
-      "_trabalhador": "on",
       "_pessoal": "revisao",
       "_antecipacao": "off",
       "_pgtoAntecip": "on",
-      "_irpf": "off",
-      "_seguro": "on"
+      "_seguroCred": "on",
+      "_seguroCel": "off",
+      "_perdaRenda": "on",
+      "_cupons": "revisao",
+      "_seguroPessoal": "off"
     };
     
     console.log('📤 Enviando dados do frontend:', JSON.stringify(frontendData, null, 2));
@@ -60,12 +63,14 @@ async function testModuleStatusEndpoints() {
     if (verifyResponse.data.success && verifyResponse.data.data) {
       const data = verifyResponse.data.data;
       console.log('✅ Dados salvos corretamente:');
-      console.log(`   - Crédito Trabalhador: ${data['credito-trabalhador']}`);
       console.log(`   - Crédito Pessoal: ${data['credito-pessoal']}`);
       console.log(`   - Antecipação: ${data['antecipacao']}`);
       console.log(`   - Pagamento Antecipado: ${data['pagamento-antecipado']}`);
-      console.log(`   - Módulo IRPF: ${data['modulo-irpf']}`);
-      console.log(`   - Módulo Seguro: ${data['modulo-seguro']}`);
+      console.log(`   - Seguro Crédito: ${data['seguro-credito']}`);
+      console.log(`   - Seguro Celular: ${data['seguro-celular']}`);
+      console.log(`   - Perda Renda: ${data['perda-renda']}`);
+      console.log(`   - Cupons: ${data['cupons']}`);
+      console.log(`   - Seguro Pessoal: ${data['seguro-pessoal']}`);
     } else {
       console.log('❌ Dados não foram salvos corretamente');
     }
@@ -77,7 +82,7 @@ async function testModuleStatusEndpoints() {
     
     const oldFormatData = {
       "_id": "status",
-      "moduleKey": "credito-trabalhador",
+      "moduleKey": "credito-pessoal",
       "status": "off"
     };
     

@@ -1,8 +1,41 @@
-// VERSION: v2.11.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
-// CHANGELOG: v2.11.0 - Adicionado Divida Zero, removido Saúde Simplificada, reorganização de serviços
+// VERSION: v2.12.0 | DATE: 2026-03-25 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.12.0 - Alinhado a LISTA_SCHEMAS module_status: 8 serviços (_pessoal … _seguroPessoal)
 const express = require('express');
 const router = express.Router();
 const { ModuleStatus } = require('../models/ModuleStatus');
+
+const SCHEMA_FIELDS = ['_pessoal', '_antecipacao', '_pgtoAntecip', '_seguroCred', '_seguroCel', '_perdaRenda', '_cupons', '_seguroPessoal'];
+
+const FRONTEND_KEYS = ['credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'seguro-credito', 'seguro-celular', 'perda-renda', 'cupons', 'seguro-pessoal'];
+
+const FIELD_MAPPING = {
+  'credito-pessoal': '_pessoal',
+  'antecipacao': '_antecipacao',
+  'pagamento-antecipado': '_pgtoAntecip',
+  'seguro-credito': '_seguroCred',
+  'seguro-celular': '_seguroCel',
+  'perda-renda': '_perdaRenda',
+  'cupons': '_cupons',
+  'seguro-pessoal': '_seguroPessoal'
+};
+
+function normalizeModuleStatus(value) {
+  if (value === 'on' || value === 'off' || value === 'revisao') return value;
+  return 'off';
+}
+
+function buildFrontendStatusPayload(statusDoc) {
+  return {
+    'credito-pessoal': normalizeModuleStatus(statusDoc._pessoal),
+    'antecipacao': normalizeModuleStatus(statusDoc._antecipacao),
+    'pagamento-antecipado': normalizeModuleStatus(statusDoc._pgtoAntecip),
+    'seguro-credito': normalizeModuleStatus(statusDoc._seguroCred),
+    'seguro-celular': normalizeModuleStatus(statusDoc._seguroCel),
+    'perda-renda': normalizeModuleStatus(statusDoc._perdaRenda),
+    'cupons': normalizeModuleStatus(statusDoc._cupons),
+    'seguro-pessoal': normalizeModuleStatus(statusDoc._seguroPessoal)
+  };
+}
 
 // GET /api/module-status - Buscar status atual de todos os módulos
 router.get('/', async (req, res) => {
@@ -29,18 +62,7 @@ router.get('/', async (req, res) => {
       }
     }
     
-    // Mapear campos do schema para nomes do frontend
-    const data = {
-      'credito-trabalhador': statusDoc._trabalhador,
-      'credito-pessoal': statusDoc._pessoal,
-      'antecipacao': statusDoc._antecipacao,
-      'pagamento-antecipado': statusDoc._pgtoAntecip,
-      'clube-velotax': statusDoc._clubeVelotax,
-      'modulo-irpf': statusDoc._irpf,
-      'seguro-prestamista': statusDoc._seguroCred,
-      'seguro-celular': statusDoc._seguroCel,
-      'divida-zero': statusDoc._dividaZero
-    };
+    const data = buildFrontendStatusPayload(statusDoc);
     
     const result = {
       success: true,
@@ -107,11 +129,8 @@ router.post('/', async (req, res) => {
     }
     
     // Detectar formato dos dados recebidos primeiro
-    const schemaFields = ['_trabalhador', '_pessoal', '_antecipacao', '_pgtoAntecip', '_clubeVelotax', '_irpf', '_seguroCred', '_seguroCel', '_dividaZero'];
-    const frontendKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
-    
-    const hasSchemaFields = schemaFields.some(field => req.body.hasOwnProperty(field));
-    const hasFrontendKeys = frontendKeys.some(key => req.body.hasOwnProperty(key));
+    const hasSchemaFields = SCHEMA_FIELDS.some(field => req.body.hasOwnProperty(field));
+    const hasFrontendKeys = FRONTEND_KEYS.some(key => req.body.hasOwnProperty(key));
     
     // Se não há _id e há chaves do frontend ou schema, assumir que é para status
     let documentId = _id;
@@ -135,14 +154,14 @@ router.post('/', async (req, res) => {
       if (hasSchemaFields) {
         // FORMATO NOVO: Frontend envia campos do schema diretamente
         if (global.emitTraffic) {
-          global.emitTraffic('ModuleStatus', 'processing', 'Processando formato do schema MongoDB (campos _trabalhador, _pessoal, etc.)');
+          global.emitTraffic('ModuleStatus', 'processing', 'Processando formato do schema MongoDB (campos _pessoal, _antecipacao, etc.)');
         }
         
         // Extrair apenas os campos válidos do schema
         const updateData = {};
         const validStatuses = ['on', 'off', 'revisao'];
         
-        for (const field of schemaFields) {
+        for (const field of SCHEMA_FIELDS) {
           if (req.body.hasOwnProperty(field)) {
             // Validar status
             if (!validStatuses.includes(req.body[field])) {
@@ -158,7 +177,7 @@ router.post('/', async (req, res) => {
         if (Object.keys(updateData).length === 0) {
           return res.status(400).json({
             success: false,
-            error: 'Nenhum campo válido do schema encontrado. Campos válidos: _trabalhador, _pessoal, _antecipacao, _pgtoAntecip, _irpf, _seguroCred, _seguroCel'
+            error: `Nenhum campo válido do schema encontrado. Campos válidos: ${SCHEMA_FIELDS.join(', ')}`
           });
         }
         
@@ -198,25 +217,12 @@ router.post('/', async (req, res) => {
           global.emitTraffic('ModuleStatus', 'processing', 'Processando formato do frontend (chaves dos módulos)');
         }
         
-        // Mapear chaves do frontend para campos do schema
-        const fieldMapping = {
-          'credito-trabalhador': '_trabalhador',
-          'credito-pessoal': '_pessoal',
-          'antecipacao': '_antecipacao',
-          'pagamento-antecipado': '_pgtoAntecip',
-          'clube-velotax': '_clubeVelotax',
-          'modulo-irpf': '_irpf',
-          'seguro-prestamista': '_seguroCred',
-          'seguro-celular': '_seguroCel',
-          'divida-zero': '_dividaZero'
-        };
-        
         const updateData = {};
         const validStatuses = ['on', 'off', 'revisao'];
         
         // Processar cada chave do frontend
         for (const [frontendKey, status] of Object.entries(req.body)) {
-          if (frontendKeys.includes(frontendKey)) {
+          if (FRONTEND_KEYS.includes(frontendKey)) {
             // Validar status
             if (!validStatuses.includes(status)) {
               return res.status(400).json({
@@ -225,7 +231,7 @@ router.post('/', async (req, res) => {
               });
             }
             
-            const schemaField = fieldMapping[frontendKey];
+            const schemaField = FIELD_MAPPING[frontendKey];
             updateData[schemaField] = status;
           }
         }
@@ -233,7 +239,7 @@ router.post('/', async (req, res) => {
         if (Object.keys(updateData).length === 0) {
           return res.status(400).json({
             success: false,
-            error: 'Nenhuma chave válida do frontend encontrada. Chaves válidas: credito-trabalhador, credito-pessoal, antecipacao, pagamento-antecipado, clube-velotax, modulo-irpf, seguro-prestamista, seguro-celular, divida-zero'
+            error: `Nenhuma chave válida do frontend encontrada. Chaves válidas: ${FRONTEND_KEYS.join(', ')}`
           });
         }
         
@@ -272,11 +278,11 @@ router.post('/', async (req, res) => {
         if (!moduleKey || !status) {
           return res.status(400).json({
             success: false,
-            error: 'moduleKey e status são obrigatórios para _id: "status" (formato antigo) ou campos do schema (_trabalhador, _pessoal, etc.)'
+            error: `moduleKey e status são obrigatórios para _id: "status" (formato antigo) ou campos do schema (${SCHEMA_FIELDS.join(', ')})`
           });
         }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
+      const validKeys = [...FRONTEND_KEYS];
       const validStatuses = ['on', 'off', 'revisao'];
       
       if (!validKeys.includes(moduleKey)) {
@@ -293,20 +299,7 @@ router.post('/', async (req, res) => {
         });
       }
       
-      // Mapear moduleKey para campo do schema
-      const fieldMapping = {
-        'credito-trabalhador': '_trabalhador',
-        'credito-pessoal': '_pessoal',
-        'antecipacao': '_antecipacao',
-        'pagamento-antecipado': '_pgtoAntecip',
-        'clube-velotax': '_clubeVelotax',
-        'modulo-irpf': '_irpf',
-        'seguro-prestamista': '_seguroCred',
-        'seguro-celular': '_seguroCel',
-        'divida-zero': '_dividaZero'
-      };
-      
-      const fieldName = fieldMapping[moduleKey];
+      const fieldName = FIELD_MAPPING[moduleKey];
       const updateData = { [fieldName]: status };
       
       if (global.emitTraffic) {
@@ -400,21 +393,8 @@ router.put('/', async (req, res) => {
         });
       }
       
-      const validKeys = ['credito-trabalhador', 'credito-pessoal', 'antecipacao', 'pagamento-antecipado', 'clube-velotax', 'modulo-irpf', 'seguro-prestamista', 'seguro-celular', 'divida-zero'];
+      const validKeys = [...FRONTEND_KEYS];
       const validStatuses = ['on', 'off', 'revisao'];
-      
-      // Mapear moduleKey para campo do schema
-      const fieldMapping = {
-        'credito-trabalhador': '_trabalhador',
-        'credito-pessoal': '_pessoal',
-        'antecipacao': '_antecipacao',
-        'pagamento-antecipado': '_pgtoAntecip',
-        'clube-velotax': '_clubeVelotax',
-        'modulo-irpf': '_irpf',
-        'seguro-prestamista': '_seguroCred',
-        'seguro-celular': '_seguroCel',
-        'divida-zero': '_dividaZero'
-      };
       
       // Validar todos os dados antes de fazer qualquer atualização
       for (const [moduleKey, status] of Object.entries(modules)) {
@@ -438,7 +418,7 @@ router.put('/', async (req, res) => {
       const results = [];
       
       for (const [moduleKey, status] of Object.entries(modules)) {
-        const fieldName = fieldMapping[moduleKey];
+        const fieldName = FIELD_MAPPING[moduleKey];
         updateData[fieldName] = status;
         results.push({
           moduleKey: moduleKey,
