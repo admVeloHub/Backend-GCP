@@ -1,4 +1,5 @@
-// VERSION: v1.0.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2026-03-25 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.1.0 - Chaves esperadas alinhadas ao module_status (8 serviços)
 const axios = require('axios');
 
 const API_BASE_URL = 'http://localhost:3001/api';
@@ -20,12 +21,14 @@ async function testGetModuleStatus() {
       
       // Verificar se todos os módulos estão presentes
       const expectedModules = [
-        'credito-trabalhador',
-        'credito-pessoal', 
+        'credito-pessoal',
         'antecipacao',
         'pagamento-antecipado',
-        'modulo-irpf',
-        'modulo-seguro'
+        'seguro-credito',
+        'seguro-celular',
+        'perda-renda',
+        'cupons',
+        'seguro-pessoal'
       ];
       
       const receivedModules = Object.keys(response.data.data);
