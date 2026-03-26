@@ -1,4 +1,5 @@
-// VERSION: v4.18.0 | DATE: 2026-03-17 | AUTHOR: VeloHub Development Team
+// VERSION: v4.19.0 | DATE: 2026-03-26 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.19.0 - API GET/PUT /api/artigos-categorias (singleton MongoDB artigos_categorias)
 // CHANGELOG: v4.18.0 - Removidos WhatsApp Manager, dependência Baileys e API WhatsApp. Rotas /api/whatsapp retornam 410 Gone.
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
 // No Cloud Run, as variáveis já estão em process.env, então dotenv só é necessário em desenvolvimento
@@ -47,6 +48,7 @@ const { initializeCollections, getCollectionsStats } = require('./config/collect
 
 // Importar rotas
 const artigosRoutes = require('./routes/artigos');
+const artigosCategoriasRoutes = require('./routes/artigos-categorias');
 const velonewsRoutes = require('./routes/velonews');
 const botPerguntasRoutes = require('./routes/botPerguntas');
 const igpRoutes = require('./routes/igp');
@@ -169,6 +171,7 @@ app.use(checkMonitoringFunctions);
 
 // Rotas da API
 app.use('/api/artigos', artigosRoutes);
+app.use('/api/artigos-categorias', artigosCategoriasRoutes);
 app.use('/api/velonews', velonewsRoutes);
 app.use('/api/bot-perguntas', botPerguntasRoutes);
 app.use('/api/igp', igpRoutes);
