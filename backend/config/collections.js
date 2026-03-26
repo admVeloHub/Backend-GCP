@@ -1,9 +1,10 @@
-// VERSION: v3.2.0 | DATE: 2024-12-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.3.0 | DATE: 2026-03-26 | AUTHOR: VeloHub Development Team
 const { getDatabase } = require('./database');
 
 // Definir as collections do projeto
 const COLLECTIONS = {
   ARTIGOS: 'Artigos',
+  ARTIGOS_CATEGORIAS: 'artigos_categorias',
   VELONEWS: 'Velonews', 
   BOT_PERGUNTAS: 'Bot_perguntas',
   USERS: 'users'
