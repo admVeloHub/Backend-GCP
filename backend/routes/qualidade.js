@@ -1,5 +1,6 @@
-// VERSION: v5.17.0 | DATE: 2026-03-17 | AUTHOR: VeloHub Development Team
+// VERSION: v5.18.0 | DATE: 2026-03-30 | AUTHOR: VeloHub Development Team
 // CHANGELOG: 
+// v5.18.0 - Adicionado campo apoioN1 (credencial Apoio N1) ao objeto acessos: validKeys, mensagens, normalizarAcessosParaResposta, POST/PUT funcionários; formato legado array aceita sistema apoioN1 / normalizado apoion1
 // v5.17.0 - Adicionado campo Sociais ao objeto acessos em todas as validações e normalizações: incluído na lista validKeys da validação, atualizadas mensagens de erro, adicionado tratamento no formato antigo (array) para 'sociais', incluído em todos os objetos padrão e normalizações (normalizarAcessosParaResposta, POST e PUT de funcionarios)
 // v5.16.0 - Adicionado campo realTime ao objeto acessos em todas as validações e normalizações: incluído na lista validKeys da validação, atualizadas mensagens de erro, adicionado tratamento no formato antigo (array) para 'realTime', 'tempo-real' e 'tempo_real', incluído em todos os objetos padrão e normalizações (normalizarAcessosParaResposta, POST e PUT de funcionarios)
 // v5.15.3 - CORREÇÃO CRÍTICA: Melhorado tratamento de dataContratado no endpoint POST /funcionarios: validação explícita para null/undefined/string vazia retornando erro 400 antes da conversão, validação de Date válida após conversão (não pode ser NaN), retorno de erro 400 com mensagem clara se data inválida antes de tentar salvar no MongoDB
@@ -354,16 +355,16 @@ const validateFuncionario = (req, res, next) => {
   
   // Validação de acessos - garantir que não receba valores padrão true
   if (acessos !== undefined && acessos !== null) {
-    // Formato novo: objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean}
+    // Formato novo: objeto booleano {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1}
     if (typeof acessos === 'object' && !Array.isArray(acessos)) {
-      const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime'];
+      const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime', 'apoioN1'];
       const keys = Object.keys(acessos);
       
       // Verificar se todas as chaves são válidas
       if (!keys.every(key => validKeys.includes(key))) {
         return res.status(400).json({
           success: false,
-          message: 'Acessos deve conter apenas as chaves Velohub, Console, Academy, Desk, Ouvidoria, Sociais e/ou realTime'
+          message: 'Acessos deve conter apenas as chaves Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime e/ou apoioN1'
         });
       }
       
@@ -390,7 +391,7 @@ const validateFuncionario = (req, res, next) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean} ou array de objetos'
+        message: 'Acessos deve ser um objeto {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1} (booleanos) ou array de objetos'
       });
     }
   }
@@ -576,7 +577,7 @@ const validateAvaliacaoGPT = (req, res, next) => {
 const normalizarAcessosParaResposta = (acessos) => {
   // Se for null ou undefined, retornar objeto vazio
   if (!acessos) {
-    return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+    return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
   }
   
   // Se já for objeto booleano, garantir que tenha todas as chaves
@@ -588,13 +589,14 @@ const normalizarAcessosParaResposta = (acessos) => {
       Desk: acessos.Desk === true,
       Ouvidoria: acessos.Ouvidoria === true,
       Sociais: acessos.Sociais === true,
-      realTime: acessos.realTime === true
+      realTime: acessos.realTime === true,
+      apoioN1: acessos.apoioN1 === true
     };
   }
   
   // Se for array (formato antigo), converter para objeto booleano
   if (Array.isArray(acessos)) {
-    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
     acessos.forEach(acesso => {
       if (acesso && acesso.sistema) {
         const sistema = acesso.sistema.toLowerCase();
@@ -613,13 +615,17 @@ const normalizarAcessosParaResposta = (acessos) => {
         } else if (sistema === 'realtime' || sistema === 'tempo-real' || sistema === 'tempo_real') {
           novoAcessos.realTime = true;
         }
+        const sisSlug = String(acesso.sistema).toLowerCase().replace(/[\s_-]/g, '');
+        if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
+          novoAcessos.apoioN1 = true;
+        }
       }
     });
     return novoAcessos;
   }
   
   // Fallback: objeto vazio
-  return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+  return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
 };
 
 // GET /api/qualidade/funcionarios - Listar todos os funcionários
@@ -806,6 +812,10 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'realTime' || acesso.sistema === 'realtime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
             novoAcessos.realTime = true;
           }
+          const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
+          if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
+            novoAcessos.apoioN1 = true;
+          }
         });
         // Sempre retornar objeto booleano completo
         funcionarioData.acessos = {
@@ -815,7 +825,8 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           Desk: novoAcessos.Desk === true,
           Ouvidoria: novoAcessos.Ouvidoria === true,
           Sociais: novoAcessos.Sociais === true,
-          realTime: novoAcessos.realTime === true
+          realTime: novoAcessos.realTime === true,
+          apoioN1: novoAcessos.apoioN1 === true
         };
       }
       // Se está no formato novo (objeto), garantir que tenha todas as chaves
@@ -827,17 +838,18 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
           Desk: funcionarioData.acessos.Desk === true,
           Ouvidoria: funcionarioData.acessos.Ouvidoria === true,
           Sociais: funcionarioData.acessos.Sociais === true,
-          realTime: funcionarioData.acessos.realTime === true
+          realTime: funcionarioData.acessos.realTime === true,
+          apoioN1: funcionarioData.acessos.apoioN1 === true
         };
       }
     } else {
       // Se acessos não foi fornecido, definir como objeto com todos false
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
     }
     
     // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
     if (funcionarioData.desligado || funcionarioData.afastado) {
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
     }
     
     // Gerar hash de senha padrão se não fornecido (primeiroNome.ultimoNomeCPF)
@@ -1098,7 +1110,7 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
     if (updateData.acessos !== undefined) {
       if (updateData.acessos === null || updateData.acessos === '') {
         // Se explicitamente null ou vazio, converter para objeto com todos false
-        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
       }
       // Se está no formato antigo (array), converter para objeto booleano
       else if (Array.isArray(updateData.acessos)) {
@@ -1125,6 +1137,10 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           if (acesso.sistema === 'realTime' || acesso.sistema === 'realtime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
             novoAcessos.realTime = true;
           }
+          const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
+          if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
+            novoAcessos.apoioN1 = true;
+          }
         });
         // Sempre retornar objeto booleano completo
         updateData.acessos = {
@@ -1134,7 +1150,8 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           Desk: novoAcessos.Desk === true,
           Ouvidoria: novoAcessos.Ouvidoria === true,
           Sociais: novoAcessos.Sociais === true,
-          realTime: novoAcessos.realTime === true
+          realTime: novoAcessos.realTime === true,
+          apoioN1: novoAcessos.apoioN1 === true
         };
       }
       // Se está no formato novo (objeto), garantir que tenha todas as chaves
@@ -1146,14 +1163,15 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
           Desk: updateData.acessos.Desk === true,
           Ouvidoria: updateData.acessos.Ouvidoria === true,
           Sociais: updateData.acessos.Sociais === true,
-          realTime: updateData.acessos.realTime === true
+          realTime: updateData.acessos.realTime === true,
+          apoioN1: updateData.acessos.apoioN1 === true
         };
       }
     }
     
     // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
     if (updateData.desligado || updateData.afastado) {
-      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false };
+      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false };
     }
     // Se acessos não foi fornecido no update, não alterar o valor existente
     
