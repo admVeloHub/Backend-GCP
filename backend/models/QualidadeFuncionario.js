@@ -1,4 +1,5 @@
-// VERSION: v1.14.0 | DATE: 2026-03-17 | AUTHOR: VeloHub Development Team
+// VERSION: v1.15.0 | DATE: 2026-03-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.15.0 - Adicionado campo apoioN1 ao objeto acessos (credencial Apoio N1); validador e normalizações array/objeto atualizados
 // CHANGELOG: v1.14.0 - Adicionado campo Sociais ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean}
 // CHANGELOG: v1.13.0 - Adicionado campo realTime ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, realTime: Boolean}
 // CHANGELOG: v1.12.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
@@ -110,7 +111,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
   },
   // Campo acessos suporta ambos os formatos durante transição
   // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
-  // Formato novo: Objeto booleano {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, realTime: Boolean}
+  // Formato novo: Objeto booleano {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1}
   acessos: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
@@ -118,10 +119,10 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
       validator: function(v) {
         if (!v) return true; // Opcional
         
-        // Formato novo: objeto com Velohub, Console, Academy, Desk, Ouvidoria, Sociais e/ou realTime (booleanos)
+        // Formato novo: objeto com chaves de credenciais (booleanos)
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
-          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime'];
+          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime', 'apoioN1'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
         
@@ -136,7 +137,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         
         return false;
       },
-      message: 'Acessos deve ser um objeto {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean} ou array de objetos [{sistema, perfil, ...}]'
+      message: 'Acessos deve ser um objeto {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1} (booleanos) ou array de objetos [{sistema, perfil, ...}]'
     }
   },
   desligado: {
@@ -213,6 +214,10 @@ qualidadeFuncionarioSchema.methods.normalizeAcessos = function() {
       if (acesso.sistema === 'realTime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
         novoAcessos.realTime = true;
       }
+      const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
+      if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
+        novoAcessos.apoioN1 = true;
+      }
     });
     // Retornar objeto vazio se não houver correspondências, ou null se array vazio
     return Object.keys(novoAcessos).length > 0 ? novoAcessos : null;
@@ -256,6 +261,10 @@ qualidadeFuncionarioSchema.statics.normalizeAcessosFormat = function(acessos) {
       }
       if (acesso.sistema === 'realTime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
         novoAcessos.realTime = true;
+      }
+      const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
+      if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
+        novoAcessos.apoioN1 = true;
       }
     });
     // Retornar objeto vazio se não houver correspondências, ou null se array vazio

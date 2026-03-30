@@ -1,5 +1,24 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2026-03-30
+
+**Data/Hora:** 2026-03-30  
+**Tipo:** GitHub Push  
+**Versão:** v1.15.0 (QualidadeFuncionario.js), v5.18.0 (qualidade.js)  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+Credencial **Apoio N1** no objeto `acessos` de `qualidade_funcionarios` (chave `apoioN1`, boolean). Validação `validKeys`, normalização em GET/POST/PUT e conversão do formato legado (array) quando `sistema` é `apoioN1` ou normalizado `apoion1`.
+
+### Arquivos modificados:
+- `backend/models/QualidadeFuncionario.js` (v1.15.0)
+- `backend/routes/qualidade.js` (v5.18.0)
+- `DEPLOY_LOG.md`
+
+---
+
 ## GitHub Push - 2026-03-04
 
 **Data/Hora:** 2026-03-04  
