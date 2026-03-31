@@ -1,5 +1,27 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2026-03-30 (Academy quiz_conteudo)
+
+**Data/Hora:** 2026-03-30  
+**Tipo:** GitHub Push  
+**Versão:** server v4.20.0, `QuizConteudo` v1.0.0, `academyQuizConteudo` v1.0.1, import script v1.0.5  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+API **GET/PUT** `/api/academy/quiz-conteudo/quiz/:quizID` na coleção `academy_registros.quiz_conteudo`. Modelo Mongoose `QuizConteudo`. Validação de questões: `opção1–2` obrigatórios; `opção3/4` vazias (V/F) ou preenchidas conforme múltipla escolha. Script `import-quiz-conteudo-xlsx.js` importa planilha (Config + abas por quiz) com gabarito col. F (A–D / 1–4). Dependência `xlsx`.
+
+### Arquivos modificados:
+- `backend/server.js` (v4.20.0)
+- `backend/models/QuizConteudo.js` (novo)
+- `backend/routes/academyQuizConteudo.js` (novo)
+- `backend/scripts/import-quiz-conteudo-xlsx.js` (novo)
+- `package.json` / `package-lock.json` (xlsx)
+- `DEPLOY_LOG.md`
+
+---
+
 ## GitHub Push - 2026-03-30
 
 **Data/Hora:** 2026-03-30  

@@ -1,4 +1,5 @@
-// VERSION: v4.19.0 | DATE: 2026-03-26 | AUTHOR: VeloHub Development Team
+// VERSION: v4.20.0 | DATE: 2026-03-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.20.0 - API GET/PUT /api/academy/quiz-conteudo/quiz/:quizID (coleção quiz_conteudo)
 // CHANGELOG: v4.19.0 - API GET/PUT /api/artigos-categorias (singleton MongoDB artigos_categorias)
 // CHANGELOG: v4.18.0 - Removidos WhatsApp Manager, dependência Baileys e API WhatsApp. Rotas /api/whatsapp retornam 410 Gone.
 // Carregar variáveis de ambiente PRIMEIRO, antes de qualquer require que precise delas
@@ -71,6 +72,7 @@ const academyCursosRoutes = require('./routes/academyCursos');
 const academyModulosRoutes = require('./routes/academyModulos');
 const academySecoesRoutes = require('./routes/academySecoes');
 const academyAulasRoutes = require('./routes/academyAulas');
+const academyQuizConteudoRoutes = require('./routes/academyQuizConteudo');
 const mongodbInsertRoutes = require('./routes/mongodbInsert');
 const mongodbCertificadosRoutes = require('./routes/mongodbCertificados');
 const mongodbReprovasRoutes = require('./routes/mongodbReprovas');
@@ -194,6 +196,7 @@ app.use('/api/academy/cursos', academyCursosRoutes);
 app.use('/api/academy/modulos', academyModulosRoutes);
 app.use('/api/academy/secoes', academySecoesRoutes);
 app.use('/api/academy/aulas', academyAulasRoutes);
+app.use('/api/academy/quiz-conteudo', academyQuizConteudoRoutes);
 app.use('/api/mongodb', mongodbInsertRoutes);
 app.use('/api/mongodb/certificados', mongodbCertificadosRoutes);
 app.use('/api/mongodb/reprovas', mongodbReprovasRoutes);
