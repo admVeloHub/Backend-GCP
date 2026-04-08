@@ -1,4 +1,5 @@
-// VERSION: v2.3.2 | DATE: 2025-02-11 | AUTHOR: VeloHub Development Team
+// VERSION: v2.4.0 | DATE: 2026-04-08 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.4.0 - audioTreated: Mixed (pending|done|failed; legado boolean); auto-retry + unlock manual
 // CHANGELOG: v2.3.2 - Removido completamente campo dominioAssunto do schema. Campo não existe mais no modelo.
 // CHANGELOG: v2.3.1 - Removida obrigatoriedade (required: true) dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Todos os campos booleanos agora têm default: false.
 // CHANGELOG: v2.3.0 - Substituído dominioAssunto por registroAtendimento, adicionado conformidadeTicket -15pts, atualizadas pontuações
@@ -94,9 +95,22 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  /** pending | done | failed — legado no banco: boolean true/false */
   audioTreated: {
-    type: Boolean,
-    default: false
+    type: mongoose.Schema.Types.Mixed,
+    default: undefined
+  },
+  audioAutoRepublishAttempts: {
+    type: Number,
+    default: 0
+  },
+  audioLastAutoRepublishAt: {
+    type: Date,
+    default: null
+  },
+  audioManualReenvioDisponivelEm: {
+    type: Date,
+    default: null
   },
   audioCreatedAt: {
     type: Date,

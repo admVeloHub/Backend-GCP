@@ -1,4 +1,5 @@
-// VERSION: v2.9.1 | DATE: 2026-03-19 | AUTHOR: VeloHub Development Team
+// VERSION: v3.0.0 | DATE: 2026-04-08 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v3.0.0 - Pipeline áudio: audioTreated pending|done|failed + auto-retry fields; confirm/generate/status/reenviar/notify alinhados
 // CHANGELOG: v2.9.1 - GET listar: normalização de auditoria isolada por item (try/catch) para não derrubar a rota inteira
 // CHANGELOG: v2.9.0 - auditoria: objeto { auditoriaFeita, corpoAuditoria }; GET result e PUT editar-auditoria normalizam legado string
 // CHANGELOG: v2.8.1 - reenviar-pubsub: resposta 500 inclui details (mensagem do erro) em development para diagnóstico
@@ -14,6 +15,13 @@ const router = express.Router();
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
 const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS, publishAudioToPubSub, fileExists } = require('../config/gcs');
+const {
+  isAudioPipelineDone,
+  isAudioPipelineFailed,
+  isAudioPipelinePending,
+  isAudioUploadBlocked,
+  isManualRepublishAllowed
+} = require('../utils/audioPipeline');
 
 /**
  * Normaliza campo auditoria para JSON (legado: string no Mongo | novo: objeto).
@@ -135,47 +143,39 @@ router.post('/generate-upload-url', async (req, res) => {
       // IMPORTANTE: Verificar explicitamente === true para evitar falsos positivos
       // Uma avaliação nova deve ter audioSent === false, null ou undefined
       // Tratar casos onde campos podem ser undefined (avaliações antigas criadas antes da correção)
-      const audioSent = avaliacao?.audioSent;
-      const audioTreated = avaliacao?.audioTreated;
-      
-      // Considerar como "tem upload pendente" apenas se audioSent é EXATAMENTE true
-      // Se for false, null, undefined ou qualquer outro valor, NÃO bloquear
-      const temUploadPendente = avaliacao && 
-                                 (audioSent === true) && 
-                                 (audioTreated !== true);
-      
-      if (temUploadPendente) {
-        // Verificar se passou mais de 30 minutos desde o último upload
+      if (avaliacao && isAudioUploadBlocked(avaliacao)) {
+        if (isAudioPipelineFailed(avaliacao.audioTreated)) {
+          if (global.emitTraffic) {
+            global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Upload bloqueado após falha automática — use reenvio manual na lista');
+          }
+          return res.status(400).json({
+            success: false,
+            error: 'O processamento automático esgotou as tentativas. Use o reenvio manual no módulo Qualidade após o período de espera.'
+          });
+        }
         const audioUpdatedAt = avaliacao.audioUpdatedAt || avaliacao.audioCreatedAt;
         if (audioUpdatedAt) {
-          const tempoDecorrido = (Date.now() - new Date(audioUpdatedAt).getTime()) / (1000 * 60); // minutos
-          
+          const tempoDecorrido = (Date.now() - new Date(audioUpdatedAt).getTime()) / (1000 * 60);
           if (tempoDecorrido > 30) {
-            // Permitir reenvio após 30 minutos (processamento pode estar travado)
-            console.log(`[AUDIO ANALISE] Permitindo reenvio após ${tempoDecorrido.toFixed(1)} minutos de espera`);
-            // Continuar com o fluxo normal (não bloquear)
+            console.log(`[AUDIO ANALISE] Permitindo nova URL após ${tempoDecorrido.toFixed(1)} min (pendente/retry automático)`);
           } else {
-            // Bloquear apenas se não passou 30 minutos
             if (global.emitTraffic) {
               global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', `Upload bloqueado - aguardando processamento há ${tempoDecorrido.toFixed(1)} minutos`);
             }
-            
             return res.status(400).json({
               success: false,
-              error: `Um áudio já foi enviado para esta avaliação há ${Math.round(tempoDecorrido)} minutos e está aguardando processamento. Aguarde a conclusão ou tente novamente após 30 minutos se o processamento estiver travado.`,
+              error: `Um áudio já foi enviado para esta avaliação há ${Math.round(tempoDecorrido)} minutos e está aguardando processamento. O sistema tentará republicar automaticamente; aguarde ou tente após 30 minutos para novo arquivo.`,
               tempoDecorrido: Math.round(tempoDecorrido),
               podeReenviar: tempoDecorrido > 30
             });
           }
         } else {
-          // Se não há timestamp, bloquear por segurança
           if (global.emitTraffic) {
-            global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Já existe um upload concluído pendente de processamento para esta avaliação');
+            global.emitTraffic('POST /api/audio-analise/generate-upload-url', 'ERROR', 'Upload pendente sem timestamp');
           }
-          
           return res.status(400).json({
             success: false,
-            error: 'Já existe um upload concluído pendente de processamento para esta avaliação. Aguarde o processamento concluir antes de enviar um novo arquivo.'
+            error: 'Já existe um upload pendente para esta avaliação. Aguarde o processamento.'
           });
         }
       }
@@ -205,12 +205,13 @@ router.post('/generate-upload-url', async (req, res) => {
         });
       }
       
-      // Salvar nome do arquivo e resetar status (permite retentativas)
-      // audioSent será marcado como true apenas após confirmação de upload bem-sucedido
-      // IMPORTANTE: Garantir que campos estão explicitamente setados como false se não existirem
+      // Salvar nome do arquivo; audioSent só após confirm-upload; mic cinza até lá
       avaliacao.nomeArquivoAudio = uploadData.fileName;
-      avaliacao.audioSent = false; // Não marcar como enviado ainda
-      avaliacao.audioTreated = false;
+      avaliacao.audioSent = false;
+      avaliacao.audioTreated = undefined;
+      avaliacao.audioAutoRepublishAttempts = 0;
+      avaliacao.audioLastAutoRepublishAt = null;
+      avaliacao.audioManualReenvioDisponivelEm = null;
       avaliacao.audioCreatedAt = new Date();
       avaliacao.audioUpdatedAt = new Date();
       
@@ -325,19 +326,23 @@ router.get('/status/:id', async (req, res) => {
           nomeArquivoAudio: null,
           status: 'pendente',
           sent: false,
-          treated: false,
+          treated: null,
           audioCreatedAt: null,
-          audioUpdatedAt: null
+          audioUpdatedAt: null,
+          audioManualReenvioDisponivelEm: null,
+          audioAutoRepublishAttempts: 0,
+          audioLastAutoRepublishAt: null
         }
       });
     }
 
-    // Determinar status baseado em sent e treated
     let status = 'pendente';
-    if (avaliacao.audioSent && !avaliacao.audioTreated) {
-      status = 'processando';
-    } else if (avaliacao.audioTreated) {
+    if (isAudioPipelineDone(avaliacao.audioTreated)) {
       status = 'concluido';
+    } else if (isAudioPipelineFailed(avaliacao.audioTreated)) {
+      status = 'falha';
+    } else if (isAudioPipelinePending(avaliacao.audioTreated, true)) {
+      status = 'processando';
     }
 
     // Disparar evento SSE se status mudou para concluido
@@ -373,7 +378,10 @@ router.get('/status/:id', async (req, res) => {
         sent: avaliacao.audioSent,
         treated: avaliacao.audioTreated,
         audioCreatedAt: avaliacao.audioCreatedAt,
-        audioUpdatedAt: avaliacao.audioUpdatedAt
+        audioUpdatedAt: avaliacao.audioUpdatedAt,
+        audioManualReenvioDisponivelEm: avaliacao.audioManualReenvioDisponivelEm || null,
+        audioAutoRepublishAttempts: avaliacao.audioAutoRepublishAttempts ?? 0,
+        audioLastAutoRepublishAt: avaliacao.audioLastAutoRepublishAt || null
       }
     });
   } catch (error) {
@@ -452,7 +460,10 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
         sent: avaliacao.audioSent,
         treated: avaliacao.audioTreated,
         audioCreatedAt: avaliacao.audioCreatedAt,
-        audioUpdatedAt: avaliacao.audioUpdatedAt
+        audioUpdatedAt: avaliacao.audioUpdatedAt,
+        audioManualReenvioDisponivelEm: avaliacao.audioManualReenvioDisponivelEm || null,
+        audioAutoRepublishAttempts: avaliacao.audioAutoRepublishAttempts ?? 0,
+        audioLastAutoRepublishAt: avaliacao.audioLastAutoRepublishAt || null
       }
     });
   } catch (error) {
@@ -573,9 +584,13 @@ router.post('/confirm-upload', async (req, res) => {
       });
     }
 
-    // Marcar audioSent como true apenas agora, após confirmação de upload bem-sucedido
     avaliacao.audioSent = true;
+    avaliacao.audioTreated = 'pending';
+    avaliacao.audioCreatedAt = new Date();
     avaliacao.audioUpdatedAt = new Date();
+    avaliacao.audioAutoRepublishAttempts = 0;
+    avaliacao.audioLastAutoRepublishAt = null;
+    avaliacao.audioManualReenvioDisponivelEm = null;
     await avaliacao.save();
 
     // Publicar mensagem no Pub/Sub para processamento do áudio
@@ -616,7 +631,10 @@ router.post('/confirm-upload', async (req, res) => {
       data: {
         avaliacaoId: avaliacao._id,
         nomeArquivoAudio: avaliacao.nomeArquivoAudio,
-        audioSent: true
+        audioSent: true,
+        audioTreated: avaliacao.audioTreated,
+        audioCreatedAt: avaliacao.audioCreatedAt,
+        audioUpdatedAt: avaliacao.audioUpdatedAt
       }
     });
   } catch (error) {
@@ -656,8 +674,7 @@ router.post('/notify-completed', async (req, res) => {
       });
     }
 
-    // Atualizar audioTreated diretamente na avaliação
-    avaliacao.audioTreated = true;
+    avaliacao.audioTreated = 'done';
     avaliacao.audioUpdatedAt = new Date();
     await avaliacao.save();
 
@@ -733,7 +750,7 @@ router.post('/reenviar-pubsub/:avaliacaoId', async (req, res) => {
       });
     }
 
-    if (avaliacao.audioTreated) {
+    if (isAudioPipelineDone(avaliacao.audioTreated)) {
       if (global.emitTraffic) {
         global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Áudio já foi processado');
       }
@@ -741,6 +758,28 @@ router.post('/reenviar-pubsub/:avaliacaoId', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Áudio já foi processado. Não é necessário reenviar.'
+      });
+    }
+
+    if (isAudioPipelinePending(avaliacao.audioTreated, true)) {
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Processamento automático em andamento');
+      }
+      return res.status(400).json({
+        success: false,
+        error: 'O áudio está na fila de processamento automático. O reenvio manual só fica disponível após esgotadas as tentativas automáticas e o período de espera.'
+      });
+    }
+
+    if (isAudioPipelineFailed(avaliacao.audioTreated) && !isManualRepublishAllowed(avaliacao)) {
+      const unlock = avaliacao.audioManualReenvioDisponivelEm;
+      if (global.emitTraffic) {
+        global.emitTraffic('POST /api/audio-analise/reenviar-pubsub/:avaliacaoId', 'ERROR', 'Reenvio manual ainda bloqueado');
+      }
+      return res.status(400).json({
+        success: false,
+        error: 'Reenvio manual disponível após o período de espera. Aguarde o horário indicado.',
+        audioManualReenvioDisponivelEm: unlock || null
       });
     }
 
@@ -768,10 +807,12 @@ router.post('/reenviar-pubsub/:avaliacaoId', async (req, res) => {
       });
     }
 
-    // Publicar mensagem no Pub/Sub
     const messageId = await publishAudioToPubSub(avaliacao.nomeArquivoAudio);
 
-    // Atualizar timestamp de atualização
+    avaliacao.audioTreated = 'pending';
+    avaliacao.audioAutoRepublishAttempts = 0;
+    avaliacao.audioLastAutoRepublishAt = null;
+    avaliacao.audioManualReenvioDisponivelEm = null;
     avaliacao.audioUpdatedAt = new Date();
     await avaliacao.save();
 
