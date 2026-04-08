@@ -1332,10 +1332,7 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     // Calcular pontuação total usando nova função
     avaliacaoData.pontuacaoTotal = calcularPontuacao(avaliacaoData);
     
-    // IMPORTANTE: Garantir que campos de áudio sejam explicitamente inicializados como false
-    // Isso previne problemas onde avaliações novas são bloqueadas incorretamente
     avaliacaoData.audioSent = false;
-    avaliacaoData.audioTreated = false;
     avaliacaoData.nomeArquivoAudio = null;
     avaliacaoData.audioCreatedAt = null;
     avaliacaoData.audioUpdatedAt = null;
@@ -1344,7 +1341,6 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     console.log('📊 [POST /avaliacoes] Pontuação calculada:', avaliacaoData.pontuacaoTotal);
     console.log('📊 [POST /avaliacoes] Campos de áudio inicializados:', {
       audioSent: avaliacaoData.audioSent,
-      audioTreated: avaliacaoData.audioTreated,
       nomeArquivoAudio: avaliacaoData.nomeArquivoAudio
     });
     console.log('📊 [POST /avaliacoes] Confirmando conformidadeTicket foi processado:', {
