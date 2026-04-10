@@ -1,4 +1,8 @@
-// VERSION: v3.0.0 | DATE: 2026-04-08 | AUTHOR: VeloHub Development Team
+// VERSION: v3.1.2 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v3.1.2 - Release push GitHub 2026-04-10 (mesma revisão que GET /results-por-avaliacoes e populate cold start)
+// CHANGELOG: v3.1.1 - Carregar QualidadeAvaliacao na conexão console_analises antes de populate em GET /result (evita Schema hasn't been registered)
+// CHANGELOG: v3.1.0 - GET /results-por-avaliacoes: lote por ?ids= (max 60) para lista Status IA sem N requisições
+// CHANGELOG: v3.0.1 - GET /result/:id: findOne com $or ObjectId|string em avaliacaoMonitorId (legado + vínculo monitores)
 // CHANGELOG: v3.0.0 - Pipeline áudio: audioTreated pending|done|failed + auto-retry fields; confirm/generate/status/reenviar/notify alinhados
 // CHANGELOG: v2.9.1 - GET listar: normalização de auditoria isolada por item (try/catch) para não derrubar a rota inteira
 // CHANGELOG: v2.9.0 - auditoria: objeto { auditoriaFeita, corpoAuditoria }; GET result e PUT editar-auditoria normalizam legado string
@@ -10,10 +14,13 @@
 // v2.5.0 - Melhorada validação de upload bloqueado: permite reenvio após 30 minutos se processamento travou, mensagens de erro mais informativas
 // v2.4.0 - Removido dominioAssunto dos selects, substituído por registroAtendimento e adicionados conformidadeTicket e naoConsultouBot
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
+// populate(avaliacaoMonitorId → QualidadeAvaliacao) usa a conexão console_analises; o Proxy só registra o modelo no primeiro acesso — forçar antes do primeiro find + populate (cold start / ordem de rotas).
+void QualidadeAvaliacao.modelName;
 const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS, publishAudioToPubSub, fileExists } = require('../config/gcs');
 const {
   isAudioPipelineDone,
@@ -480,15 +487,105 @@ router.get('/status-por-avaliacao/:avaliacaoId', async (req, res) => {
   }
 });
 
+const RESULTADOS_POR_AVALIACOES_MAX_IDS = 60;
+
+// GET /api/audio-analise/results-por-avaliacoes?ids=id1,id2,... — lote para Status IA na lista (não altera /result/:id)
+router.get('/results-por-avaliacoes', async (req, res) => {
+  try {
+    const raw = req.query.ids;
+    if (raw == null || raw === '') {
+      return res.json({ success: true, data: {} });
+    }
+
+    const parts = String(raw)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const unique = [...new Set(parts)].slice(0, RESULTADOS_POR_AVALIACOES_MAX_IDS);
+
+    if (unique.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const inVals = [];
+    for (const id of unique) {
+      inVals.push(id);
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        try {
+          inVals.push(new mongoose.Types.ObjectId(id));
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+
+    const docs = await AudioAnaliseResult.find({ avaliacaoMonitorId: { $in: inVals } })
+      .sort({ updatedAt: -1 })
+      .select('-__v')
+      .lean();
+
+    const byKey = new Map();
+    for (const doc of docs) {
+      if (!doc || doc.avaliacaoMonitorId == null) continue;
+      const k = String(doc.avaliacaoMonitorId);
+      if (!k || byKey.has(k)) continue;
+      byKey.set(k, doc);
+    }
+
+    const data = {};
+    for (const reqId of unique) {
+      const k = String(reqId);
+      const doc = byKey.get(k);
+      if (!doc) {
+        data[k] = null;
+        continue;
+      }
+      const payload = { ...doc };
+      if (payload.auditoria !== undefined) {
+        payload.auditoria = normalizeAuditoriaForClient(payload.auditoria);
+      }
+      data[k] = payload;
+    }
+
+    if (global.emitTraffic) {
+      global.emitTraffic(
+        'GET /api/audio-analise/results-por-avaliacoes',
+        'SUCCESS',
+        `${unique.length} ids solicitados; ${byKey.size} resultados`
+      );
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Erro ao buscar resultados por avaliações (lote):', error);
+    if (global.emitTraffic) {
+      global.emitTraffic('GET /api/audio-analise/results-por-avaliacoes', 'ERROR', error.message);
+    }
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
 // GET /api/audio-analise/result/:id - Busca resultado completo da análise
 // Agora aceita avaliacaoId em vez de audioStatusId
 router.get('/result/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const rawId = String(id || '').trim();
+    const monitorOr = [{ avaliacaoMonitorId: rawId }];
+    try {
+      if (rawId && mongoose.Types.ObjectId.isValid(rawId)) {
+        monitorOr.push({ avaliacaoMonitorId: new mongoose.Types.ObjectId(rawId) });
+      }
+    } catch (_) {
+      /* ignore cast errors */
+    }
 
     // Buscar resultado da análise usando avaliacaoMonitorId
     // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
-    const result = await AudioAnaliseResult.findOne({ avaliacaoMonitorId: id })
+    const result = await AudioAnaliseResult.findOne({ $or: monitorOr })
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',

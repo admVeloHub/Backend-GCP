@@ -84,3 +84,6 @@ Thumbs.db
 
 # Worker separado (repositório próprio)
 worker-qualidade/
+
+# Dumps locais de migrations (não versionar)
+backend/scripts/migrations/backups/

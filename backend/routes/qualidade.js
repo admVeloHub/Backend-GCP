@@ -1,5 +1,8 @@
-// VERSION: v5.18.0 | DATE: 2026-03-30 | AUTHOR: VeloHub Development Team
-// CHANGELOG: 
+// VERSION: v5.20.1 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// CHANGELOG:
+// v5.20.1 - Release push GitHub 2026-04-10
+// v5.20.0 - POST/PUT avaliacoes: ignora avaliacaoIA no body (nota IA só worker); PUT força somenteAnaliseAudioIA false se critérios no body
+// v5.19.0 - qualidade_avaliacoes: persistir somenteAnaliseAudioIA no modelo e POST/PUT; validação de tipo opcional
 // v5.18.0 - Adicionado campo apoioN1 (credencial Apoio N1) ao objeto acessos: validKeys, mensagens, normalizarAcessosParaResposta, POST/PUT funcionários; formato legado array aceita sistema apoioN1 / normalizado apoion1
 // v5.17.0 - Adicionado campo Sociais ao objeto acessos em todas as validações e normalizações: incluído na lista validKeys da validação, atualizadas mensagens de erro, adicionado tratamento no formato antigo (array) para 'sociais', incluído em todos os objetos padrão e normalizações (normalizarAcessosParaResposta, POST e PUT de funcionarios)
 // v5.16.0 - Adicionado campo realTime ao objeto acessos em todas as validações e normalizações: incluído na lista validKeys da validação, atualizadas mensagens de erro, adicionado tratamento no formato antigo (array) para 'realTime', 'tempo-real' e 'tempo_real', incluído em todos os objetos padrão e normalizações (normalizarAcessosParaResposta, POST e PUT de funcionarios)
@@ -484,6 +487,13 @@ const validateAvaliacao = (req, res, next) => {
         message: `${name} deve ser um valor booleano (true ou false)`
       });
     }
+  }
+
+  if (req.body.somenteAnaliseAudioIA !== undefined && req.body.somenteAnaliseAudioIA !== null && typeof req.body.somenteAnaliseAudioIA !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      message: 'somenteAnaliseAudioIA deve ser um valor booleano (true ou false)'
+    });
   }
   
   next();
@@ -1303,7 +1313,8 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     global.emitJson(req.body);
     
     const avaliacaoData = { ...req.body };
-    
+    delete avaliacaoData.avaliacaoIA;
+
     // Garantir valores padrão para campos booleanos (checkboxes sempre enviam true ou false)
     // Mas se por algum motivo não foram enviados, usar false como padrão
     const booleanFields = ['saudacaoAdequada', 'escutaAtiva', 'clarezaObjetividade', 'resolucaoQuestao', 
@@ -1316,6 +1327,8 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
         avaliacaoData[field] = Boolean(avaliacaoData[field]);
       }
     });
+
+    avaliacaoData.somenteAnaliseAudioIA = avaliacaoData.somenteAnaliseAudioIA === true;
     
     // Converter ano para número se for string
     if (avaliacaoData.ano && typeof avaliacaoData.ano === 'string') {
@@ -1389,7 +1402,8 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
     }
     
     const updateData = { ...req.body };
-    
+    delete updateData.avaliacaoIA;
+
     // Garantir valores padrão para campos booleanos (checkboxes sempre enviam true ou false)
     // Mas se por algum motivo não foram enviados, usar false como padrão
     const booleanFields = ['saudacaoAdequada', 'escutaAtiva', 'clarezaObjetividade', 'resolucaoQuestao', 
@@ -1401,6 +1415,15 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
       }
       // Se não foi enviado, manter valor existente (não sobrescrever)
     });
+
+    const criterioEnviadoNoBody = booleanFields.some((f) =>
+      Object.prototype.hasOwnProperty.call(req.body, f)
+    );
+    if (criterioEnviadoNoBody) {
+      updateData.somenteAnaliseAudioIA = false;
+    } else if (updateData.somenteAnaliseAudioIA !== undefined && updateData.somenteAnaliseAudioIA !== null) {
+      updateData.somenteAnaliseAudioIA = Boolean(updateData.somenteAnaliseAudioIA);
+    }
     
     // Converter ano para número se for string
     if (updateData.ano && typeof updateData.ano === 'string') {

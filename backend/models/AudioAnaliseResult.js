@@ -1,4 +1,6 @@
-// VERSION: v2.3.0 | DATE: 2026-03-19 | AUTHOR: VeloHub Development Team
+// VERSION: v2.3.2 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.3.2 - Release push GitHub 2026-04-10
+// CHANGELOG: v2.3.1 - Após registrar na conexão analises, garantir QualidadeAvaliacao registrado para populate de avaliacaoMonitorId
 // CHANGELOG: v2.3.0 - Campo auditoria como Mixed: objeto { auditoriaFeita, corpoAuditoria }; legado String ainda lido nas rotas
 // CHANGELOG: v2.2.0 - Adicionado campo auditoria (String) para auditoria do gestor sobre a análise
 // CHANGELOG: v2.1.0 - Removido campo dominioAssunto, adicionados registroAtendimento e conformidadeTicket
@@ -144,6 +146,8 @@ const getModel = () => {
       }
       
       AudioAnaliseResultModel = connection.model('AudioAnaliseResult', audioAnaliseResultSchema);
+      const QualidadeAvaliacaoPeer = require('./QualidadeAvaliacao');
+      void QualidadeAvaliacaoPeer.modelName;
     } catch (error) {
       console.error('❌ Erro ao inicializar modelo AudioAnaliseResult:', error);
       throw error;

@@ -1,5 +1,31 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+## GitHub Push - 2026-04-10 (Qualidade IA: results-por-avaliacoes, avaliacaoIA, migrations)
+
+**Data/Hora:** 2026-04-10  
+**Tipo:** GitHub Push  
+**Versão:** `audioAnalise.js` v3.1.2, `qualidade.js` v5.20.1, `AudioAnaliseResult.js` v2.3.2, `QualidadeAvaliacao.js` v2.6.1; scripts migrations/check/export v1.0.0  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+Qualidade / áudio IA: endpoint **GET** `/api/audio-analise/results-por-avaliacoes` (lote por `?ids=`, máx. 60) para a coluna Status IA no Console; registro do modelo `QualidadeAvaliacao` na conexão correta antes de populate em GET resultado (cold start); campos `avaliacaoIA` / fluxo em `QualidadeAvaliacao` e `AudioAnaliseResult`; ajustes em rotas `qualidade` para persistência coerente com análise IA. Scripts: `016_backfill_avaliacao_ia_qualidade.js`, `017_apply_avaliacao_ia_from_json.js`, `check_avaliacao_ia.js`, `export_audio_results_avaliacao_pontuacao.js`. Pasta `backend/scripts/migrations/backups/` ignorada no Git (dumps locais).
+
+### Arquivos modificados:
+- `backend/routes/audioAnalise.js`
+- `backend/routes/qualidade.js`
+- `backend/models/AudioAnaliseResult.js`
+- `backend/models/QualidadeAvaliacao.js`
+- `backend/scripts/migrations/016_backfill_avaliacao_ia_qualidade.js`
+- `backend/scripts/migrations/017_apply_avaliacao_ia_from_json.js`
+- `backend/scripts/check_avaliacao_ia.js`
+- `backend/scripts/export_audio_results_avaliacao_pontuacao.js`
+- `.gitignore`
+- `DEPLOY_LOG.md`
+
+---
+
 ## GitHub Push - 2026-03-30 (Academy quiz_conteudo)
 
 **Data/Hora:** 2026-03-30  
