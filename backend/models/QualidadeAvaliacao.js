@@ -1,4 +1,7 @@
-// VERSION: v2.4.0 | DATE: 2026-04-08 | AUTHOR: VeloHub Development Team
+// VERSION: v2.6.1 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.6.1 - Release push GitHub 2026-04-10
+// CHANGELOG: v2.6.0 - avaliacaoIA (Number opcional): nota IA espelhada ao concluir audio_analise_results; atualizado pelo worker
+// CHANGELOG: v2.5.0 - Campo somenteAnaliseAudioIA (Boolean default false): lote só áudio até avaliação manual do supervisor
 // CHANGELOG: v2.4.0 - audioTreated: Mixed (pending|done|failed; legado boolean); auto-retry + unlock manual
 // CHANGELOG: v2.3.2 - Removido completamente campo dominioAssunto do schema. Campo não existe mais no modelo.
 // CHANGELOG: v2.3.1 - Removida obrigatoriedade (required: true) dos campos booleanos. Checkboxes sempre enviam true ou false, nunca null/undefined. Todos os campos booleanos agora têm default: false.
@@ -72,6 +75,11 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  /** true = criado no fluxo lote/só áudio; nota manual ainda não aplicada (UI ignora pontuação 0 como “Ruim”) */
+  somenteAnaliseAudioIA: {
+    type: Boolean,
+    default: false
+  },
   observacoes: {
     type: String,
     default: '',
@@ -84,6 +92,12 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
   pontuacaoTotal: {
     type: Number,
     default: 0
+  },
+  /** Nota IA espelhada de audio_analise_results ao concluir análise (consensual/quality); só backend/worker — não enviar via PUT. */
+  avaliacaoIA: {
+    type: Number,
+    min: -160,
+    max: 100
   },
   // Campos de status de áudio (fundidos de audio_analise_status)
   nomeArquivoAudio: {
