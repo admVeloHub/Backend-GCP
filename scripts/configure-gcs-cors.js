@@ -1,28 +1,32 @@
-// VERSION: v1.1.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
 /**
  * Script para configurar CORS no bucket do GCS
- * 
+ *
  * Uso:
  *   node scripts/configure-gcs-cors.js
- * 
+ *
  * Ou com variáveis de ambiente:
  *   GCP_PROJECT_ID=velohub-471220 GCS_BUCKET_NAME=qualidade_audio_envio node scripts/configure-gcs-cors.js
- * 
+ *
  * Ou no PowerShell:
  *   $env:GCP_PROJECT_ID="velohub-471220"; $env:GCS_BUCKET_NAME="qualidade_audio_envio"; node scripts/configure-gcs-cors.js
  */
 
-const path = require('path');
-const fs = require('fs');
-
-// Tentar carregar .env se existir
-const envPath = path.join(__dirname, '../.env');
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
-} else {
-  // Tentar carregar do env.example para referência
-  console.log('⚠️  Arquivo .env não encontrado. Usando variáveis de ambiente do sistema.\n');
-}
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
 
 // Verificar se as variáveis necessárias estão configuradas
 if (!process.env.GCP_PROJECT_ID || !process.env.GCS_BUCKET_NAME) {
@@ -31,7 +35,7 @@ if (!process.env.GCP_PROJECT_ID || !process.env.GCS_BUCKET_NAME) {
   console.log('  - GCP_PROJECT_ID');
   console.log('  - GCS_BUCKET_NAME\n');
   console.log('Opções:');
-  console.log('1. Criar arquivo .env na raiz do projeto com:');
+  console.log('1. Definir variáveis em FONTE DA VERDADE/.env (ver VARIAVEIS_AMBIENTE.md) ou criar local com:');
   console.log('   GCP_PROJECT_ID=velohub-471220');
   console.log('   GCS_BUCKET_NAME=qualidade_audio_envio\n');
   console.log('2. Ou definir via variáveis de ambiente:');

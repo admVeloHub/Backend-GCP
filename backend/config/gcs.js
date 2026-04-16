@@ -1,6 +1,15 @@
-// VERSION: v1.9.0 | DATE: 2025-03-03 | AUTHOR: VeloHub Development Team
-// CHANGELOG: 
-// v1.9.0 - publishAudioToPubSub agora usa as mesmas credenciais do GCS (Service Account Key) para garantir autenticação correta
+// VERSION: v1.17.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.17.0 - listAcademyTrophyTemasObjects: listar imagens em icones_conquistas/temas/ (reutilizar no Console)
+// CHANGELOG: v1.16.0 - Troféus Academy: objeto = icones_conquistas/modulos|temas (bucket já é mediabank_academy; sem pasta duplicada)
+// CHANGELOG: v1.15.0 - isAcademyTrophyObjectPath: validação path para GET proxy (leitura privada)
+// CHANGELOG: v1.14.0 - uploadAcademyTrophyImage: upload servidor→GCS (evita CORS browser→storage.googleapis.com quando bucket não tem CORS/IAM)
+// CHANGELOG: v1.13.1 - Academy troféus: object prefix explícito mediabank_academy/icones_conquistas/modulos|temas (convenção pedida; bucket GCS_BUCKET_NAME3)
+// CHANGELOG: v1.13.0 - generateImageUploadSignedUrl: path sem duplicar nome do bucket (GCS_BUCKET_NAME3 já é mediabank_academy); configureBucketAcademyTrophiesCORS
+// CHANGELOG: v1.12.1 - parseGcpServiceAccountKey: aspas tipográficas; JSON como string; fallback aspas simples→duplas se credencial válida
+// CHANGELOG: v1.12.0 - parseGcpServiceAccountKey(): normaliza BOM/aspas/{{ acidental; mensagens PT para JSON inválido no .env
+// CHANGELOG: v1.11.0 - Signed URL imagens Academy (pasta mediabank_academy/...): bucket GCS_BUCKET_NAME3; demais imagens mantêm GCS_BUCKET_NAME2
+// CHANGELOG: v1.10.0 - generateImageUploadSignedUrl: validação explícita GCP_PROJECT_ID, GCS_BUCKET_NAME2, GCP_SERVICE_ACCOUNT_KEY (mensagens para dev local)
+// CHANGELOG: v1.9.0 - publishAudioToPubSub agora usa as mesmas credenciais do GCS (Service Account Key) para garantir autenticação correta
 // v1.8.0 - Adicionada validação de credenciais GCP antes de gerar Signed URLs, melhoradas mensagens de erro para problemas de autenticação
 const { Storage } = require('@google-cloud/storage');
 const { PubSub } = require('@google-cloud/pubsub');
@@ -8,21 +17,27 @@ const { PubSub } = require('@google-cloud/pubsub');
 // Configuração do Google Cloud Storage
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
 const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME; // Para outras funções (áudio, etc)
-const GCS_BUCKET_NAME_IMAGES = process.env.GCS_BUCKET_NAME2; // EXCLUSIVO para imagens
+const GCS_BUCKET_NAME_IMAGES = process.env.GCS_BUCKET_NAME2; // Imagens gerais (ex.: img_velonews)
+const GCS_BUCKET_NAME_ACADEMY_TROPHIES = process.env.GCS_BUCKET_NAME3; // Troféus Academy (prefixo mediabank_academy/...)
 
 // LOG CRÍTICO: Verificar valores das variáveis de ambiente ao carregar o módulo
 console.log('🔍 [GCS CONFIG] Verificando variáveis de ambiente:');
 console.log(`   GCP_PROJECT_ID: ${GCP_PROJECT_ID ? '✅ DEFINIDO' : '❌ NÃO DEFINIDO'}`);
 console.log(`   GCS_BUCKET_NAME (outras funções): ${GCS_BUCKET_NAME ? `✅ DEFINIDO = "${GCS_BUCKET_NAME}"` : '❌ NÃO DEFINIDO'}`);
 console.log(`   GCS_BUCKET_NAME2 (imagens): ${GCS_BUCKET_NAME_IMAGES ? `✅ DEFINIDO = "${GCS_BUCKET_NAME_IMAGES}"` : '❌ NÃO DEFINIDO'}`);
+console.log(`   GCS_BUCKET_NAME3 (troféus Academy): ${GCS_BUCKET_NAME_ACADEMY_TROPHIES ? `✅ DEFINIDO = "${GCS_BUCKET_NAME_ACADEMY_TROPHIES}"` : '❌ NÃO DEFINIDO'}`);
 if (!GCS_BUCKET_NAME_IMAGES) {
-  console.error('🚨 ERRO CRÍTICO: GCS_BUCKET_NAME2 não está definido! Upload de imagens NÃO funcionará!');
+  console.error('🚨 ERRO CRÍTICO: GCS_BUCKET_NAME2 não está definido! Upload de imagens (exceto Academy) NÃO funcionará!');
+}
+if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
+  console.warn('⚠️ GCS_BUCKET_NAME3 não definido — uploads de troféus Academy (mediabank_academy) falharão até configurar.');
 }
 
 // Inicializar cliente do GCS
 let storage;
 let bucket; // Bucket padrão (para outras funções)
-let bucketImages; // Bucket EXCLUSIVO para imagens
+let bucketImages; // Bucket EXCLUSIVO para imagens (GCS_BUCKET_NAME2)
+let bucketAcademyTrophies; // Bucket troféus Academy (GCS_BUCKET_NAME3)
 
 // Tipos de arquivo permitidos para áudio
 const ALLOWED_AUDIO_TYPES = [
@@ -68,6 +83,109 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILE_SIZE = MAX_AUDIO_SIZE;
 
 /**
+ * Faz parse do JSON da Service Account a partir de process.env (uma linha no .env).
+ * Corrige casos comuns: BOM, aspas simples à volta do JSON, "{{" duplicado no início,
+ * aspas tipográficas, JSON guardado como string JSON, chaves com aspas simples (erro na coluna 2 após "{").
+ */
+function isLikelyGcpServiceAccountJson(obj) {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.type === 'string' &&
+    obj.type === 'service_account' &&
+    typeof obj.client_email === 'string' &&
+    typeof obj.private_key === 'string'
+  );
+}
+
+function parseGcpServiceAccountKey(raw) {
+  if (raw == null || typeof raw !== 'string') {
+    throw new Error('GCP_SERVICE_ACCOUNT_KEY tem de ser texto (JSON da Service Account).');
+  }
+  let s = raw.trim();
+  if (s.length === 0) {
+    throw new Error('GCP_SERVICE_ACCOUNT_KEY está vazio.');
+  }
+  if (s.charCodeAt(0) === 0xfeff) {
+    s = s.slice(1);
+  }
+  if (s.startsWith("'") && s.endsWith("'") && s.length > 2) {
+    s = s.slice(1, -1).trim();
+  }
+  if (s.startsWith('{{')) {
+    s = `{${s.slice(2)}`;
+  }
+  // Excel / colagem: "=" no início do valor
+  if (s.startsWith('=') && s.includes('{')) {
+    s = s.slice(1).trim();
+  }
+
+  const tryParse = (input) => {
+    try {
+      const cred = JSON.parse(input);
+      if (!cred || typeof cred !== 'object') {
+        return null;
+      }
+      return cred;
+    } catch {
+      return null;
+    }
+  };
+
+  let cred = tryParse(s);
+  if (cred !== null && typeof cred === 'object') {
+    return cred;
+  }
+
+  // Aspas tipográficas em vez de " (colagem Word/Outlook)
+  const sSmart = s.replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"');
+  cred = tryParse(sSmart);
+  if (cred !== null && typeof cred === 'object') {
+    return cred;
+  }
+
+  // Valor = string JSON (ficheiro inteiro escapado como string numa variável)
+  if (s.startsWith('"') && s.endsWith('"')) {
+    try {
+      const inner = JSON.parse(s);
+      if (typeof inner === 'string') {
+        const t = inner.trim();
+        if (t.startsWith('{')) {
+          cred = tryParse(t);
+          if (cred && isLikelyGcpServiceAccountJson(cred)) {
+            return cred;
+          }
+        }
+      }
+    } catch {
+      /* continuar */
+    }
+  }
+
+  // Erro típico "position 1": após "{" vem "'" (objeto estilo JavaScript, não JSON)
+  const sSingleToDouble = s.replace(/'/g, '"');
+  cred = tryParse(sSingleToDouble);
+  if (cred && isLikelyGcpServiceAccountJson(cred)) {
+    return cred;
+  }
+
+  let lastErr = 'parse falhou';
+  try {
+    JSON.parse(s);
+  } catch (e) {
+    lastErr = e.message;
+  }
+
+  throw new Error(
+    `GCP_SERVICE_ACCOUNT_KEY: JSON inválido (${lastErr}). ` +
+      'O ficheiro .json da Google usa sempre aspas duplas (") nas chaves; não uses aspas simples (\') no interior. ' +
+      'Cole o JSON completo numa única linha minificada, sem quebras no meio. ' +
+      'Se copiaste de Word/Excel, volta a colar a partir do ficheiro .json original. ' +
+      'Confirma que não há texto nem "=" antes do primeiro "{".'
+  );
+}
+
+/**
  * Inicializar cliente do Google Cloud Storage
  */
 const initializeGCS = () => {
@@ -81,7 +199,7 @@ const initializeGCS = () => {
     // Caso contrário, usar Application Default Credentials (ADC)
     if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
       try {
-        const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+        const credentials = parseGcpServiceAccountKey(process.env.GCP_SERVICE_ACCOUNT_KEY);
         
         // Validar que credentials contém client_email (necessário para Signed URLs)
         if (!credentials.client_email) {
@@ -138,26 +256,7 @@ const getBucketImages = () => {
     throw new Error('GCS_BUCKET_NAME2 não está configurado nas variáveis de ambiente');
   }
   
-  // Garantir que storage está inicializado
-  if (!storage) {
-    if (!GCP_PROJECT_ID) {
-      throw new Error('GCP_PROJECT_ID não está configurado nas variáveis de ambiente');
-    }
-    
-    // Inicializar Storage
-    if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
-      const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
-      storage = new Storage({
-        projectId: GCP_PROJECT_ID,
-        credentials: credentials
-      });
-    } else {
-      storage = new Storage({
-        projectId: GCP_PROJECT_ID
-        // ADC será usado automaticamente
-      });
-    }
-  }
+  ensureStorageForSignedUrls();
   
   // Criar/obter bucket de imagens se ainda não existe
   if (!bucketImages) {
@@ -169,6 +268,44 @@ const getBucketImages = () => {
   }
   
   return bucketImages;
+};
+
+/**
+ * Storage compartilhado por getBucketImages / getBucketAcademyTrophies (evita duplicar init).
+ */
+const ensureStorageForSignedUrls = () => {
+  if (!storage) {
+    if (!GCP_PROJECT_ID) {
+      throw new Error('GCP_PROJECT_ID não está configurado nas variáveis de ambiente');
+    }
+    if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
+      const credentials = parseGcpServiceAccountKey(process.env.GCP_SERVICE_ACCOUNT_KEY);
+      storage = new Storage({
+        projectId: GCP_PROJECT_ID,
+        credentials
+      });
+    } else {
+      storage = new Storage({
+        projectId: GCP_PROJECT_ID
+      });
+    }
+  }
+};
+
+/**
+ * Bucket de troféus / ícones Academy (prefixo de pasta mediabank_academy em signed uploads).
+ */
+const getBucketAcademyTrophies = () => {
+  if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
+    console.error('❌ [getBucketAcademyTrophies] GCS_BUCKET_NAME3 não está definido');
+    throw new Error('GCS_BUCKET_NAME3 não está configurado nas variáveis de ambiente');
+  }
+  ensureStorageForSignedUrls();
+  if (!bucketAcademyTrophies) {
+    bucketAcademyTrophies = storage.bucket(GCS_BUCKET_NAME_ACADEMY_TROPHIES);
+    console.log(`✅ [getBucketAcademyTrophies] Bucket: "${GCS_BUCKET_NAME_ACADEMY_TROPHIES}"`);
+  }
+  return bucketAcademyTrophies;
 };
 
 /**
@@ -238,7 +375,7 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
     
     // Validar que o JSON contém client_email
     try {
-      const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+      const credentials = parseGcpServiceAccountKey(process.env.GCP_SERVICE_ACCOUNT_KEY);
       if (!credentials.client_email) {
         const errorMsg = 'GCP_SERVICE_ACCOUNT_KEY não contém client_email. Verifique se o JSON da Service Account Key está completo.';
         console.error('❌ [generateUploadSignedUrl]', errorMsg);
@@ -325,6 +462,33 @@ const generateUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 1
 const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinutes = 15, folder = 'img_velonews') => {
   try {
     console.log(`🔍 [generateImageUploadSignedUrl] Gerando Signed URL para imagem: ${fileName}`);
+
+    const useAcademyTrophyBucket =
+      typeof folder === 'string' &&
+      (folder.startsWith('icones_conquistas/') ||
+        folder.includes('mediabank_academy/icones_conquistas'));
+
+    if (!GCP_PROJECT_ID) {
+      throw new Error(
+        'GCP_PROJECT_ID não está definido. Adicione em FONTE DA VERDADE/.env (carregado pelo SKYNET ao iniciar).'
+      );
+    }
+    if (!process.env.GCP_SERVICE_ACCOUNT_KEY) {
+      throw new Error(
+        'GCP_SERVICE_ACCOUNT_KEY não está definido. Signed URLs V4 exigem o JSON da Service Account numa linha em FONTE DA VERDADE/.env (campo client_email + private_key).'
+      );
+    }
+    if (useAcademyTrophyBucket) {
+      if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
+        throw new Error(
+          'GCS_BUCKET_NAME3 não está definido (bucket de troféus Academy / mediabank_academy). Adicione em FONTE DA VERDADE/.env.'
+        );
+      }
+    } else if (!GCS_BUCKET_NAME_IMAGES) {
+      throw new Error(
+        'GCS_BUCKET_NAME2 não está definido (bucket de imagens gerais). Adicione em FONTE DA VERDADE/.env.'
+      );
+    }
     
     // Validar tipo de arquivo (imagem)
     const typeValidation = validateFileType(mimeType, fileName, 'image');
@@ -333,16 +497,25 @@ const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinute
       throw new Error(typeValidation.error);
     }
 
-    // Obter bucket EXCLUSIVO para imagens
-    const bucket = getBucketImages();
+    const bucket = useAcademyTrophyBucket ? getBucketAcademyTrophies() : getBucketImages();
     if (!bucket) {
-      throw new Error('Bucket de imagens do GCS não está disponível. Verifique GCS_BUCKET_NAME2.');
+      throw new Error(
+        useAcademyTrophyBucket
+          ? 'Bucket de troféus Academy (GCS_BUCKET_NAME3) não está disponível.'
+          : 'Bucket de imagens do GCS não está disponível. Verifique GCS_BUCKET_NAME2.'
+      );
     }
-    
+    const bucketNameOut = useAcademyTrophyBucket
+      ? GCS_BUCKET_NAME_ACADEMY_TROPHIES
+      : GCS_BUCKET_NAME_IMAGES;
+
+    // Academy: objeto no bucket GCS_BUCKET_NAME3 (nome mediabank_academy) — ex.: icones_conquistas/modulos
+    const objectFolder = folder;
+
     // Gerar nome único para o arquivo
     const timestamp = Date.now();
-    const uniqueFileName = `${folder}/${timestamp}-${fileName}`;
-    console.log(`📁 [generateImageUploadSignedUrl] Caminho do arquivo: ${uniqueFileName}`);
+    const uniqueFileName = `${objectFolder}/${timestamp}-${fileName}`;
+    console.log(`📁 [generateImageUploadSignedUrl] Caminho: ${uniqueFileName} | bucket: ${bucketNameOut}`);
     
     // Criar referência do arquivo
     const file = bucket.file(uniqueFileName);
@@ -362,7 +535,7 @@ const generateImageUploadSignedUrl = async (fileName, mimeType, expirationMinute
     return {
       url,
       fileName: uniqueFileName,
-      bucket: GCS_BUCKET_NAME_IMAGES,
+      bucket: bucketNameOut,
       expiresIn: expirationMinutes * 60 // segundos
     };
   } catch (error) {
@@ -536,6 +709,56 @@ const configureBucketImagesCORS = async (allowedOrigins = null) => {
 };
 
 /**
+ * Configurar CORS no bucket de troféus Academy (GCS_BUCKET_NAME3)
+ * Obrigatório para PUT direto do browser (signed URL) com Content-Type
+ */
+const configureBucketAcademyTrophiesCORS = async (allowedOrigins = null) => {
+  try {
+    const bucket = getBucketAcademyTrophies();
+
+    if (!bucket) {
+      throw new Error('Bucket de troféus Academy não está disponível. Verifique GCS_BUCKET_NAME3.');
+    }
+
+    const origins = allowedOrigins || [
+      'https://console-v2-hfsqj6konq-ue.a.run.app',
+      'https://console-v2-278491073220.us-east1.run.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      '*'
+    ];
+
+    const corsConfig = [
+      {
+        origin: origins,
+        method: ['PUT', 'OPTIONS', 'GET', 'POST', 'HEAD'],
+        responseHeader: [
+          'Content-Type',
+          'x-goog-resumable',
+          'x-goog-content-length-range',
+          'Access-Control-Allow-Origin',
+          'Access-Control-Allow-Methods',
+          'Access-Control-Allow-Headers',
+          'Access-Control-Max-Age'
+        ],
+        maxAgeSeconds: 3600
+      }
+    ];
+
+    await bucket.setCorsConfiguration(corsConfig);
+
+    console.log('✅ Configuração CORS aplicada ao bucket de troféus Academy:', GCS_BUCKET_NAME_ACADEMY_TROPHIES);
+    console.log('📋 Origens permitidas:', origins);
+
+    return corsConfig;
+  } catch (error) {
+    console.error('❌ Erro ao configurar CORS no bucket de troféus Academy:', error);
+    throw error;
+  }
+};
+
+/**
  * Verificar configuração CORS atual do bucket
  * @returns {Promise<Array>}
  */
@@ -569,7 +792,7 @@ const publishAudioToPubSub = async (fileName, bucketName = null) => {
     let pubsub;
     if (process.env.GCP_SERVICE_ACCOUNT_KEY) {
       try {
-        const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY);
+        const credentials = parseGcpServiceAccountKey(process.env.GCP_SERVICE_ACCOUNT_KEY);
         pubsub = new PubSub({ 
           projectId: GCP_PROJECT_ID,
           credentials: credentials
@@ -710,10 +933,109 @@ const uploadImage = async (fileBuffer, fileName, mimeType, folder = 'img_velonew
   }
 };
 
+/** Pastas permitidas para troféus Academy (upload via backend) — alinhado a AcademyPage / LISTA_SCHEMAS */
+const ACADEMY_TROPHY_UPLOAD_FOLDERS = [
+  'icones_conquistas/modulos',
+  'icones_conquistas/temas'
+];
+
+/**
+ * Objeto no bucket (path completo). Forma correta: icones_conquistas/modulos|temas/arquivo.
+ * Aceita também legado mediabank_academy/icones_conquistas/... (uploads antigos com prefixo errado).
+ */
+function isAcademyTrophyObjectPath(objectPath) {
+  if (typeof objectPath !== 'string') return false;
+  if (/^icones_conquistas\/(modulos|temas)\/[^/]+$/.test(objectPath)) return true;
+  if (/^mediabank_academy\/icones_conquistas\/(modulos|temas)\/[^/]+$/.test(objectPath)) return true;
+  return false;
+}
+
+/**
+ * Upload de imagem de troféu Academy para GCS (bucket GCS_BUCKET_NAME3), a partir do buffer no servidor.
+ * Evita CORS no cliente (PUT direto a storage.googleapis.com exige CORS no bucket).
+ */
+const uploadAcademyTrophyImage = async (fileBuffer, fileName, mimeType, folder) => {
+  if (!ACADEMY_TROPHY_UPLOAD_FOLDERS.includes(folder)) {
+    throw new Error(`Pasta de troféu Academy inválida. Use: ${ACADEMY_TROPHY_UPLOAD_FOLDERS.join(' ou ')}`);
+  }
+  if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
+    throw new Error('GCS_BUCKET_NAME3 não está configurado (bucket mediabank_academy).');
+  }
+
+  const typeValidation = validateFileType(mimeType, fileName, 'image');
+  if (!typeValidation.valid) {
+    throw new Error(typeValidation.error);
+  }
+  const sizeValidation = validateFileSize(fileBuffer.length, 'image');
+  if (!sizeValidation.valid) {
+    throw new Error(sizeValidation.error);
+  }
+
+  const bucket = getBucketAcademyTrophies();
+  if (!bucket) {
+    throw new Error('Bucket de troféus Academy (GCS_BUCKET_NAME3) não está disponível.');
+  }
+
+  const timestamp = Date.now();
+  const uniqueFileName = `${folder}/${timestamp}-${fileName}`;
+  const file = bucket.file(uniqueFileName);
+
+  await file.save(fileBuffer, {
+    metadata: {
+      contentType: mimeType,
+      cacheControl: 'public, max-age=31536000'
+    }
+  });
+
+  const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET_NAME_ACADEMY_TROPHIES}/${uniqueFileName}`;
+  console.log(`✅ [uploadAcademyTrophyImage] ${uniqueFileName}`);
+
+  return {
+    url: publicUrl,
+    fileName: uniqueFileName,
+    bucket: GCS_BUCKET_NAME_ACADEMY_TROPHIES
+  };
+};
+
+const ACADEMY_TROPHY_TEMAS_PREFIX = 'icones_conquistas/temas/';
+const ACADEMY_TROPHY_TEMAS_IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
+
+function buildAcademyBucketPublicUrl(objectName) {
+  const enc = objectName.split('/').map(encodeURIComponent).join('/');
+  return `https://storage.googleapis.com/${GCS_BUCKET_NAME_ACADEMY_TROPHIES}/${enc}`;
+}
+
+/**
+ * Lista objetos de imagem já existentes na pasta temas (reutilização sem novo upload).
+ */
+const listAcademyTrophyTemasObjects = async () => {
+  if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
+    throw new Error('GCS_BUCKET_NAME3 não está configurado.');
+  }
+  const bucket = getBucketAcademyTrophies();
+  if (!bucket) {
+    throw new Error('Bucket de troféus Academy (GCS_BUCKET_NAME3) não está disponível.');
+  }
+  const [files] = await bucket.getFiles({ prefix: ACADEMY_TROPHY_TEMAS_PREFIX, maxResults: 1000 });
+  const items = [];
+  for (const f of files) {
+    const name = f.name;
+    if (!name || name.endsWith('/')) continue;
+    if (!ACADEMY_TROPHY_TEMAS_IMAGE_RE.test(name)) continue;
+    items.push({
+      fileName: name,
+      url: buildAcademyBucketPublicUrl(name)
+    });
+  }
+  items.sort((a, b) => a.fileName.localeCompare(b.fileName, 'pt-BR'));
+  return items;
+};
+
 module.exports = {
   initializeGCS,
   getBucket,
   getBucketImages,
+  getBucketAcademyTrophies,
   validateFileType,
   validateFileSize,
   generateUploadSignedUrl,
@@ -721,10 +1043,14 @@ module.exports = {
   configureBucketNotification,
   configureBucketCORS,
   configureBucketImagesCORS,
+  configureBucketAcademyTrophiesCORS,
   getBucketCORS,
   fileExists,
   getFileMetadata,
   uploadImage,
+  uploadAcademyTrophyImage,
+  listAcademyTrophyTemasObjects,
+  isAcademyTrophyObjectPath,
   publishAudioToPubSub,
   ALLOWED_FILE_TYPES,
   ALLOWED_AUDIO_TYPES,

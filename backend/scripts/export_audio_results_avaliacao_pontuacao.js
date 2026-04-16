@@ -2,9 +2,24 @@
 // Exporta audio_analise_results → JSON com avaliacao_id + pontuacaoCalculada (mapeamento LISTA_SCHEMAS)
 // Uso: node scripts/export_audio_results_avaliacao_pontuacao.js [caminhoSaída.json]
 
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
+
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const { getAnalisesConnection } = require('../config/analisesConnection');

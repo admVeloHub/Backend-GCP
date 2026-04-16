@@ -8,10 +8,25 @@
 //   node scripts/migrations/017_apply_avaliacao_ia_from_json.js [caminho/arquivo.json]
 //   node scripts/migrations/017_apply_avaliacao_ia_from_json.js --dry-run
 
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
+
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
 
 const QualidadeAvaliacao = require('../../models/QualidadeAvaliacao');
 const { getAnalisesConnection } = require('../../config/analisesConnection');

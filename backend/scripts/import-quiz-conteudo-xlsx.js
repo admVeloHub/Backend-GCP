@@ -1,4 +1,4 @@
-// VERSION: v1.0.5 | DATE: 2026-03-27 | AUTHOR: VeloHub Development Team
+// VERSION: v1.0.6 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
 /**
  * Popula academy_registros.quiz_conteudo a partir do Excel VeloAcademy_Quizzes.xlsx
  *
@@ -28,14 +28,28 @@
  * Dry-run (só imprime resumo): --dry-run
  */
 
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
+
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 const { MongoClient } = require('mongodb');
 
 const pathEnvRoot = path.join(__dirname, '../..');
-require('dotenv').config({ path: path.join(pathEnvRoot, '.env') });
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { getMongoUri } = require('../config/mongodb');
 

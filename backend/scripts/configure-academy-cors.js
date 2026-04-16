@@ -1,7 +1,8 @@
-// VERSION: v1.0.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.0.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
 /**
- * Script para configurar CORS no bucket de imagens do GCS
- * Execute: node scripts/configure-images-cors.js
+ * Configura CORS no bucket de troféus Academy (GCS_BUCKET_NAME3 / mediabank_academy).
+ * Necessário para PUT direto do browser (signed URL) com Content-Type.
+ * Execute: node scripts/configure-academy-cors.js
  */
 
 (function loadVelohubFonteEnv(here) {
@@ -20,18 +21,17 @@
   }
 })(__dirname);
 
-const { configureBucketImagesCORS } = require('../config/gcs');
+const { configureBucketAcademyTrophiesCORS } = require('../config/gcs');
 
 async function main() {
   try {
-    console.log('🔧 Configurando CORS no bucket de imagens...');
-    
-    // Configurar CORS com origens padrão (inclui localhost)
-    const corsConfig = await configureBucketImagesCORS();
-    
+    console.log('🔧 Configurando CORS no bucket de troféus Academy (GCS_BUCKET_NAME3)...');
+
+    const corsConfig = await configureBucketAcademyTrophiesCORS();
+
     console.log('✅ CORS configurado com sucesso!');
     console.log('📋 Configuração aplicada:', JSON.stringify(corsConfig, null, 2));
-    
+
     process.exit(0);
   } catch (error) {
     console.error('❌ Erro ao configurar CORS:', error);
@@ -40,4 +40,3 @@ async function main() {
 }
 
 main();
-

@@ -1,4 +1,5 @@
-// VERSION: v1.5.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.6.0 - moduleTrophyIconUrl; sections: temaTrophyIconUrlBronze, temaTrophyIconUrlPrata; temaTrophyIconUrl legado (opcional, leitura)
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -105,6 +106,22 @@ const sectionSchema = new mongoose.Schema({
     default: null,
     trim: true
   },
+  temaTrophyIconUrlBronze: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  temaTrophyIconUrlPrata: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  /** Legado LISTA_SCHEMAS; manter para documentos antigos até regravar pelo Console */
+  temaTrophyIconUrl: {
+    type: String,
+    default: null,
+    trim: true
+  },
   lessons: {
     type: [lessonSchema],
     required: false, // Permitir temas sem aulas inicialmente
@@ -134,6 +151,11 @@ const moduleSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  moduleTrophyIconUrl: {
+    type: String,
+    default: null,
+    trim: true
   },
   sections: {
     type: [sectionSchema],
