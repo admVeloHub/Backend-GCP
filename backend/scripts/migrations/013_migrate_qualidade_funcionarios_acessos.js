@@ -3,15 +3,21 @@
 // Campo acessos deve ser alterado de Array de objetos para Objeto booleano {Velohub: Boolean, Console: Boolean}
 
 // Carregar variáveis de ambiente
-const path = require('path');
-try {
-  // Tentar carregar .env do diretório raiz do backend
-  require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
-  // Também tentar do diretório atual
-  require('dotenv').config();
-} catch (error) {
-  // Ignorar erro se dotenv não conseguir carregar (normal em produção)
-}
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
 
 const mongoose = require('mongoose');
 const QualidadeFuncionario = require('../../models/QualidadeFuncionario');

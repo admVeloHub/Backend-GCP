@@ -4,14 +4,21 @@
 // 2. Todos os funcionários com userMail correspondente no config recebem Console=true
 
 // Carregar variáveis de ambiente
-const path = require('path');
-try {
-  require('dotenv').config({ path: path.join(__dirname, '../../../../env') });
-  require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
-  require('dotenv').config();
-} catch (error) {
-  // Ignorar erro se dotenv não conseguir carregar
-}
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
 
 const mongoose = require('mongoose');
 const QualidadeFuncionario = require('../../models/QualidadeFuncionario');

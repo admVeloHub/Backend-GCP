@@ -1,5 +1,29 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
 
+> **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## GitHub Push - 2026-04-16 (Academy: troféus GCS, uploads, lista temas, CursosConteudo)
+
+**Data/Hora:** 2026-04-16  
+**Tipo:** GitHub Push  
+**Versão:** `gcs.js` v1.17.x, `uploads.js` v1.6.x, `server.js` v4.20.x, `CursosConteudo.js`, `mongodbInsert.js`  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+Academy / GCS: `GCP_SERVICE_ACCOUNT_KEY` parse robusto; bucket `GCS_BUCKET_NAME3` com paths `icones_conquistas/modulos|temas`; `POST /api/uploads/academy-trophy` (multipart); `GET /academy-trophy-media` (stream privado); `GET /academy-trophy-temas-list`; `configureBucketAcademyTrophiesCORS` + script `configure-academy-cors.js`. Modelo `CursosConteudo` troféus; `mongodbInsert` opcional `badgeCategoria`. Carregamento opcional `.env` SKYNET. Normalização LF em scripts auxiliares.
+
+### Arquivos modificados:
+- `backend/config/gcs.js`, `backend/routes/uploads.js`, `backend/server.js`
+- `backend/models/CursosConteudo.js`, `backend/routes/mongodbInsert.js`
+- `backend/scripts/configure-academy-cors.js` (novo)
+- `scripts/configure-gcs-cors.js`, vários `backend/scripts/*` (fim de linha / revisão)
+- `DEPLOY_LOG.md`
+- `.cursorrules.txt` (removido)
+
+---
+
 ## GitHub Push - 2026-04-10 (Qualidade IA: results-por-avaliacoes, avaliacaoIA, migrations)
 
 **Data/Hora:** 2026-04-10  
@@ -112,7 +136,7 @@ Implementação do campo "Tempo Real" (realTime) no schema e rotas de funcionár
 **Data/Hora:** 2025-03-03  
 **Tipo:** GitHub Push  
 **Versão:** v2.8.0 (audioAnalise.js), v1.9.0 (gcs.js), v5.15.0 (qualidade.js)  
-**Repositório:** admVeloHub/back-skynet  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main  
 **Commit:** 8b67847  
 
@@ -151,7 +175,7 @@ Implementação de publicação manual no Pub/Sub e melhorias no módulo de qual
 **Data/Hora:** 2025-02-11  
 **Tipo:** GitHub Push  
 **Versão:** v2.0.1 (whatsappConnectionService.js), v2.0.0 (whatsappManager.js, whatsapp.js, mongoAuthAdapter.js), v4.17.0 (server.js)  
-**Repositório:** admVeloHub/back-skynet, admVeloHub/Backend-GCP  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main  
 
 ### Descrição:
@@ -243,7 +267,7 @@ Implementação completa de sistema de múltiplas conexões WhatsApp:
 **Data/Hora:** 2025-02-09  
 **Tipo:** GitHub Push  
 **Versão:** v4.17.0 (server.js), v1.4.0 (support.js), v1.3.0 (HubSessions.js), v1.1.0 (hubAnalises.js), v2.0.0 (AudioAnaliseResult.js), v1.0.0 (email.js, aiServices.js, emailService.js, ticketNotificationService.js, ticketUtils.js)  
-**Repositório:** admVeloHub/back-skynet  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main  
 
 ### Descrição:
@@ -316,7 +340,7 @@ Implementação completa de sistema de notificações por email e serviços de I
 **Data/Hora:** 2025-01-30  
 **Tipo:** GitHub Push  
 **Versão:** v1.1.0 (SociaisMetricas.js), v1.3.0 (sociais.js)  
-**Repositório:** admVeloHub/back-skynet  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main → master  
 
 ### Descrição:
@@ -348,7 +372,7 @@ Implementação de endpoint REST para cálculo de nota média baseada em ratings
 **Data/Hora:** 2025-01-30  
 **Tipo:** GitHub Push  
 **Versão:** v1.2.0 (cloudbuild.yaml)  
-**Repositório:** admVeloHub/back-skynet  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main → master  
 
 ### Descrição:
@@ -377,7 +401,7 @@ Correção do cloudbuild.yaml para deploy no serviço correto:
 **Data/Hora:** 2025-01-30  
 **Tipo:** GitHub Push  
 **Versão:** v4.16.0 (server.js), v1.3.0 (whatsapp.js), v1.2.0 (sociais.js, geminiService.js), v1.2.0 (Dockerfile)  
-**Repositório:** admVeloHub/back-skynet  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main → master  
 
 ### Descrição:

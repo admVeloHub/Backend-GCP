@@ -1,8 +1,25 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.6.0 - GET /academy-trophy-temas-list (imagens em icones_conquistas/temas para reutilizar Bronze/Prata)
+// CHANGELOG: v1.5.1 - POST academy-trophy: folder icones_conquistas/modulos|temas (sem duplicar nome do bucket)
+// CHANGELOG: v1.5.0 - GET /academy-trophy-media?filename= (stream; bucket privado — pré-visualização Console)
+// CHANGELOG: v1.4.0 - POST /academy-trophy (multipart → servidor → GCS; sem CORS no bucket)
+// CHANGELOG: v1.3.0 - POST/GET configure-academy-cors / academy-cors-config (bucket GCS_BUCKET_NAME3; uploads troféus Academy)
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { uploadImage, generateImageUploadSignedUrl, validateFileType, validateFileSize, configureBucketImagesCORS, getBucketCORS } = require('../config/gcs');
+const {
+  uploadImage,
+  uploadAcademyTrophyImage,
+  listAcademyTrophyTemasObjects,
+  isAcademyTrophyObjectPath,
+  generateImageUploadSignedUrl,
+  validateFileType,
+  validateFileSize,
+  configureBucketImagesCORS,
+  configureBucketAcademyTrophiesCORS,
+  getBucketCORS,
+  getBucketAcademyTrophies
+} = require('../config/gcs');
 
 // Configurar multer para upload de arquivos em memória
 const upload = multer({
@@ -73,6 +90,105 @@ router.post('/image', upload.single('image'), async (req, res) => {
       success: false,
       error: 'Erro ao fazer upload da imagem',
       message: error.message || 'Erro desconhecido ao processar upload'
+    });
+  }
+});
+
+// GET /api/uploads/academy-trophy-temas-list — imagens já em icones_conquistas/temas/ (reutilizar no formulário)
+router.get('/academy-trophy-temas-list', async (req, res) => {
+  try {
+    const items = await listAcademyTrophyTemasObjects();
+    res.json({ success: true, data: items });
+  } catch (error) {
+    console.error('❌ academy-trophy-temas-list:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao listar troféus existentes',
+      message: error.message || 'Erro desconhecido'
+    });
+  }
+});
+
+// GET /api/uploads/academy-trophy-media?filename= — stream do objeto (bucket pode ser privado)
+router.get('/academy-trophy-media', async (req, res) => {
+  try {
+    const filename = typeof req.query.filename === 'string' ? req.query.filename.trim() : '';
+    if (!filename || !isAcademyTrophyObjectPath(filename)) {
+      return res.status(400).json({ success: false, error: 'Parâmetro filename inválido' });
+    }
+
+    const bucket = getBucketAcademyTrophies();
+    if (!bucket) {
+      return res.status(500).json({ success: false, error: 'Bucket Academy não disponível' });
+    }
+
+    const file = bucket.file(filename);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return res.status(404).end();
+    }
+
+    const [metadata] = await file.getMetadata();
+    const contentType = metadata.contentType || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    file.createReadStream().on('error', (err) => {
+      console.error('❌ academy-trophy-media stream:', err.message);
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    }).pipe(res);
+  } catch (error) {
+    console.error('❌ academy-trophy-media:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+});
+
+// POST /api/uploads/academy-trophy - Troféus Academy: multipart para o servidor (evita CORS browser→GCS)
+router.post('/academy-trophy', upload.single('image'), async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'POST /api/uploads/academy-trophy');
+    global.emitLog('info', 'POST /api/uploads/academy-trophy');
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhum arquivo enviado'
+      });
+    }
+
+    const { folder } = req.body;
+    if (!folder || typeof folder !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Campo folder é obrigatório (icones_conquistas/modulos ou icones_conquistas/temas)'
+      });
+    }
+
+    const { buffer, originalname, mimetype } = req.file;
+
+    const result = await uploadAcademyTrophyImage(buffer, originalname, mimetype, folder.trim());
+
+    res.json({
+      success: true,
+      data: {
+        url: result.url,
+        fileName: result.fileName,
+        bucket: result.bucket
+      }
+    });
+  } catch (error) {
+    global.emitLog('error', `POST /api/uploads/academy-trophy - ${error.message}`);
+    console.error('❌ academy-trophy:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao enviar troféu Academy',
+      message: error.message || 'Erro desconhecido'
     });
   }
 });
@@ -192,6 +308,63 @@ router.post('/configure-images-cors', async (req, res) => {
       success: false,
       error: 'Erro ao configurar CORS no bucket de imagens',
       message: error.message || 'Erro desconhecido ao configurar CORS'
+    });
+  }
+});
+
+// POST /api/uploads/configure-academy-cors - CORS no bucket de troféus Academy (GCS_BUCKET_NAME3)
+router.post('/configure-academy-cors', async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'Entrada recebida - POST /api/uploads/configure-academy-cors');
+    global.emitLog('info', 'POST /api/uploads/configure-academy-cors - Configurando CORS no bucket Academy');
+
+    const { allowedOrigins } = req.body;
+    const corsConfig = await configureBucketAcademyTrophiesCORS(allowedOrigins);
+
+    global.emitTraffic('Uploads', 'completed', 'CORS Academy configurado');
+    global.emitLog('success', 'POST /api/uploads/configure-academy-cors - OK');
+
+    res.json({
+      success: true,
+      message: 'Configuração CORS aplicada ao bucket de troféus Academy',
+      corsConfig
+    });
+  } catch (error) {
+    global.emitTraffic('Uploads', 'error', 'Erro CORS Academy');
+    global.emitLog('error', `POST /api/uploads/configure-academy-cors - ${error.message}`);
+    console.error('❌ Erro ao configurar CORS no bucket Academy:', error);
+
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao configurar CORS no bucket de troféus Academy',
+      message: error.message || 'Erro desconhecido'
+    });
+  }
+});
+
+// GET /api/uploads/academy-cors-config - CORS atual do bucket Academy
+router.get('/academy-cors-config', async (req, res) => {
+  try {
+    global.emitTraffic('Uploads', 'received', 'GET /api/uploads/academy-cors-config');
+    const bucket = getBucketAcademyTrophies();
+
+    if (!bucket) {
+      return res.status(500).json({
+        success: false,
+        error: 'Bucket de troféus Academy não está disponível (GCS_BUCKET_NAME3)'
+      });
+    }
+
+    const [metadata] = await bucket.getMetadata();
+    const corsConfig = metadata.cors || [];
+
+    res.json({ success: true, corsConfig });
+  } catch (error) {
+    console.error('❌ academy-cors-config:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao obter CORS do bucket Academy',
+      message: error.message
     });
   }
 });

@@ -2,8 +2,23 @@
 // Script para criar índices MongoDB otimizados para o módulo Hub Analises
 // Executar: node scripts/create-indexes-hub-analises.js
 
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
+
 const { MongoClient } = require('mongodb');
-require('dotenv').config();
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://REDACTED_ATLAS_URI';
 const DB_NAME = 'console_conteudo';

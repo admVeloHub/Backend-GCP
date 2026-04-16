@@ -1,4 +1,5 @@
-// VERSION: v1.3.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.4.0 - curso_certificados: sanitize/validação opcional de badgeCategoria (Bronze|Prata)
 const express = require('express');
 const router = express.Router();
 const { MongoClient } = require('mongodb');
@@ -33,7 +34,14 @@ const validateCertificado = (document) => {
   if (document.status && document.status !== 'Aprovado') {
     errors.push('Campo "status" deve ser "Aprovado"');
   }
-  
+
+  if (document.badgeCategoria != null && document.badgeCategoria !== '') {
+    const bc = String(document.badgeCategoria).trim();
+    if (bc !== 'Bronze' && bc !== 'Prata') {
+      errors.push('Campo "badgeCategoria" deve ser "Bronze" ou "Prata" se informado');
+    }
+  }
+
   return errors;
 };
 
@@ -84,6 +92,11 @@ const sanitizeDocument = (document, collection) => {
   if (sanitized.certificateUrl) sanitized.certificateUrl = String(sanitized.certificateUrl).trim().substring(0, 1000);
   if (sanitized.certificateId) sanitized.certificateId = String(sanitized.certificateId).trim().substring(0, 100);
   if (sanitized.wrongQuestions) sanitized.wrongQuestions = String(sanitized.wrongQuestions).substring(0, 10000);
+  if (collection === 'curso_certificados' && sanitized.badgeCategoria != null && sanitized.badgeCategoria !== '') {
+    sanitized.badgeCategoria = String(sanitized.badgeCategoria).trim().substring(0, 32);
+  } else if (collection === 'curso_certificados') {
+    delete sanitized.badgeCategoria;
+  }
   
   // Validar tipos numéricos
   if (sanitized.finalGrade !== null && sanitized.finalGrade !== undefined) {

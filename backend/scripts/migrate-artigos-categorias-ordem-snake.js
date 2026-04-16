@@ -3,15 +3,25 @@
  * Migração one-shot:
  * 1) artigos_categorias: extrai Ordem do prefixo numérico de categoria_id, novo id = snake_case(título)
  * 2) Artigos: atualiza categoria_id (e categoria_titulo) conforme mapa old→new
+(function loadVelohubFonteEnv(here) {
+  const path = require('path');
+  const fs = require('fs');
+  let d = here;
+  for (let i = 0; i < 14; i++) {
+    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
+    if (fs.existsSync(loader)) {
+      require(loader).loadFrom(here);
+      return;
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+})(__dirname);
+
  *
  * Uso: MONGO_ENV obrigatório. node scripts/migrate-artigos-categorias-ordem-snake.js
  */
-try {
-  require('dotenv').config();
-} catch (e) {
-  /* ok */
-}
-
 const { connectToDatabase, closeDatabase, getDatabase } = require('../config/database');
 const { ObjectId } = require('mongodb');
 
