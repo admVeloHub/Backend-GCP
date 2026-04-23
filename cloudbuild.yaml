@@ -1,8 +1,12 @@
-# VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+# VERSION: v1.3.0 | DATE: 2026-04-23 | AUTHOR: VeloHub Development Team
+# CHANGELOG: v1.3.0 - Cloud Run deploy com --set-secrets (MONGO_ENV, GCP_SERVICE_ACCOUNT_KEY, GEMINI_API_KEY, OPENAI_API_KEY)
 # Cloud Build configuration para deploy no Cloud Run
+#
+# Pré-requisitos no Secret Manager (nomes = versões latest mapeadas 1:1 para env):
+#   MONGO_ENV, GCP_SERVICE_ACCOUNT_KEY, GEMINI_API_KEY, OPENAI_API_KEY
+# Ajuste a lista em --set-secrets se algum secret tiver outro nome no projeto.
 
 steps:
-  # Build da imagem Docker para Backend API
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -14,7 +18,6 @@ steps:
       - 'Dockerfile'
       - '.'
 
-  # Push da imagem para Container Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
@@ -25,40 +28,31 @@ steps:
       - 'push'
       - 'gcr.io/$PROJECT_ID/staging-skynet:latest'
 
-  # Deploy no Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - 'run'
-      - 'deploy'
-      - 'staging-skynet'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
-      - '--region'
-      - 'us-east1'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--port'
-      - '8080'
-      - '--memory'
-      - '512Mi'
-      - '--cpu'
-      - '1'
-      - '--timeout'
-      - '300'
-      - '--max-instances'
-      - '10'
+      - '-c'
+      - |
+        set -e
+        gcloud run deploy staging-skynet \
+          --image "gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA" \
+          --region us-east1 \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 512Mi \
+          --cpu 1 \
+          --timeout 300 \
+          --max-instances 10 \
+          --update-env-vars=NODE_ENV=production \
+          --update-secrets=MONGO_ENV=MONGO_ENV:latest,GCP_SERVICE_ACCOUNT_KEY=GCP_SERVICE_ACCOUNT_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest
 
-# Imagens a serem armazenadas no Container Registry
 images:
   - 'gcr.io/$PROJECT_ID/staging-skynet:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/staging-skynet:latest'
 
-# Timeout do build (10 minutos)
 timeout: '600s'
 
-# Opções do build
 options:
   machineType: 'E2_HIGHCPU_8'
   logging: CLOUD_LOGGING_ONLY

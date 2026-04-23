@@ -4,11 +4,12 @@
 
 ### **Variáveis Obrigatórias:**
 ```
-MONGODB_URI=mongodb+srv://REDACTED_ATLAS_URI
+MONGO_ENV=mongodb+srv://REDACTED_ATLAS_URI
 MONGODB_DB_NAME=console_conteudo
 NODE_ENV=production
 CORS_ORIGIN=https://front-console.vercel.app
 ```
+(Em GCP use o secret `MONGO_ENV` mapeado para o serviço Cloud Run.)
 
 ### **Variáveis Opcionais:**
 ```

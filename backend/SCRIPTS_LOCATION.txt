@@ -1,0 +1,5 @@
+VERSION: v1.0.0 | DATE: 2026-04-23
+Scripts de migração e manutenção MongoDB/GCS foram movidos para:
+  root - Console/scripts/skynet-backend/
+A pasta scripts/ na raiz do monorepo está no .gitignore.
+Comandos npm no package.json do SKYNET apontam para ../scripts/skynet-backend/.

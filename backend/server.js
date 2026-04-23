@@ -1,24 +1,11 @@
-// VERSION: v4.20.1 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// VERSION: v4.21.0 | DATE: 2026-04-23 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.21.0 - Dev: loadFonteVerdadeEnv (bootstrapFonteEnv.cjs ou FONTE DA VERDADE/.env ou VELOHUB_DOTENV_PATH)
 // CHANGELOG: v4.20.1 - Dev: credenciais via FONTE DA VERDADE/.env (bootstrapFonteEnv.cjs)
 // CHANGELOG: v4.20.0 - API GET/PUT /api/academy/quiz-conteudo/quiz/:quizID (coleção quiz_conteudo)
 // CHANGELOG: v4.19.0 - API GET/PUT /api/artigos-categorias (singleton MongoDB artigos_categorias)
 // CHANGELOG: v4.18.0 - Removidos WhatsApp Manager, dependência Baileys e API WhatsApp. Rotas /api/whatsapp retornam 410 Gone.
 // Desenvolvimento local: FONTE DA VERDADE/.env (Cloud Run: variáveis já em process.env)
-(function loadVelohubFonteEnv(here) {
-  const path = require('path');
-  const fs = require('fs');
-  let d = here;
-  for (let i = 0; i < 14; i++) {
-    const loader = path.join(d, 'FONTE DA VERDADE', 'bootstrapFonteEnv.cjs');
-    if (fs.existsSync(loader)) {
-      require(loader).loadFrom(here);
-      return;
-    }
-    const parent = path.dirname(d);
-    if (parent === d) break;
-    d = parent;
-  }
-})(__dirname);
+require('./config/loadFonteVerdadeEnv').loadFrom(__dirname);
 
 // Tratamento de erros não capturados
 // IMPORTANTE: Não fazer exit(1) imediatamente para permitir que servidor escute na porta

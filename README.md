@@ -69,9 +69,9 @@ Para produção, use MongoDB Atlas:
 2. Crie um cluster
 3. Configure a string de conexão no `.env`
 
-**Exemplo de MONGODB_URI:**
+**Exemplo (sem credenciais reais):** defina `MONGO_ENV` no Secret Manager (Cloud Run) ou em `FONTE DA VERDADE/.env` no desenvolvimento.
 ```
-MONGODB_URI=mongodb+srv://REDACTED_ATLAS_URI
+MONGO_ENV=mongodb+srv://REDACTED_ATLAS_URI
 ```
 
 ## 🚀 **Deploy**

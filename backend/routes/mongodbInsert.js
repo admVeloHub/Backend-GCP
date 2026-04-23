@@ -1,4 +1,5 @@
-// VERSION: v1.4.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// VERSION: v1.5.0 | DATE: 2026-04-23 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.5.0 - Certificados: aceita tema_certificados (nova) e cursos_certificados (legado) além de curso_certificados; mesma validação/sanitize
 // CHANGELOG: v1.4.0 - curso_certificados: sanitize/validação opcional de badgeCategoria (Bronze|Prata)
 const express = require('express');
 const router = express.Router();
@@ -10,8 +11,11 @@ const { getMongoUri } = require('../config/mongodb');
 // Database fixo para certificados e reprovações
 const ACADEMY_REGISTROS_DB = process.env.ACADEMY_REGISTROS_DB || 'academy_registros';
 
-// Collections permitidas
-const ALLOWED_COLLECTIONS = ['curso_certificados', 'quiz_reprovas'];
+// Collections permitidas (certificados: nova + atual + legado plural)
+const CERTIFICADOS_COLLECTION_NAMES = ['tema_certificados', 'curso_certificados', 'cursos_certificados'];
+const ALLOWED_COLLECTIONS = [...CERTIFICADOS_COLLECTION_NAMES, 'quiz_reprovas'];
+
+const isCertificadosCollection = (name) => CERTIFICADOS_COLLECTION_NAMES.includes(name);
 
 // Validar estrutura de certificado
 const validateCertificado = (document) => {
@@ -92,9 +96,9 @@ const sanitizeDocument = (document, collection) => {
   if (sanitized.certificateUrl) sanitized.certificateUrl = String(sanitized.certificateUrl).trim().substring(0, 1000);
   if (sanitized.certificateId) sanitized.certificateId = String(sanitized.certificateId).trim().substring(0, 100);
   if (sanitized.wrongQuestions) sanitized.wrongQuestions = String(sanitized.wrongQuestions).substring(0, 10000);
-  if (collection === 'curso_certificados' && sanitized.badgeCategoria != null && sanitized.badgeCategoria !== '') {
+  if (isCertificadosCollection(collection) && sanitized.badgeCategoria != null && sanitized.badgeCategoria !== '') {
     sanitized.badgeCategoria = String(sanitized.badgeCategoria).trim().substring(0, 32);
-  } else if (collection === 'curso_certificados') {
+  } else if (isCertificadosCollection(collection)) {
     delete sanitized.badgeCategoria;
   }
   
@@ -166,7 +170,7 @@ router.post('/insert', async (req, res) => {
     
     // Validar estrutura específica da collection
     let validationErrors = [];
-    if (collection === 'curso_certificados') {
+    if (isCertificadosCollection(collection)) {
       validationErrors = validateCertificado(document);
     } else if (collection === 'quiz_reprovas') {
       validationErrors = validateReprovacao(document);

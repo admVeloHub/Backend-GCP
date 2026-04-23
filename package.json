@@ -6,10 +6,10 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "migrate-academy": "node backend/scripts/migrate-academy-data.js",
-    "buscar-resposta-bot": "node backend/scripts/buscar_resposta_bot.js",
-    "buscar-tabulacao-problema": "node backend/scripts/buscar_tabulacao_problema.js",
-    "import-quiz-conteudo-xlsx": "node backend/scripts/import-quiz-conteudo-xlsx.js",
+    "migrate-academy": "node ../scripts/skynet-backend/migrate-academy-data.js",
+    "buscar-resposta-bot": "node ../scripts/skynet-backend/buscar_resposta_bot.js",
+    "buscar-tabulacao-problema": "node ../scripts/skynet-backend/buscar_tabulacao_problema.js",
+    "import-quiz-conteudo-xlsx": "node ../scripts/skynet-backend/import-quiz-conteudo-xlsx.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

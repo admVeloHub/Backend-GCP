@@ -85,5 +85,4 @@ Thumbs.db
 # Worker separado (repositório próprio)
 worker-qualidade/
 
-# Dumps locais de migrations (não versionar)
-backend/scripts/migrations/backups/
+# Scripts de migração: ver monorepo `../scripts/skynet-backend/` (gitignored na raiz). Dumps locais não versionar.

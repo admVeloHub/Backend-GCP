@@ -2,6 +2,28 @@
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
 
+## Segurança / higienização - 2026-04-23 (working tree; push pendente)
+
+**Data/Hora:** 2026-04-23  
+**Tipo:** Alteração código / segurança  
+**Versão:** `server.js` v4.21.0, `loadFonteVerdadeEnv.js` v1.0.0, `cloudbuild.yaml` v1.3.0, `env.example` v3.6.0  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** *(a definir)*  
+**Commit:** *(pendente)*  
+
+### Descrição:
+Remoção de URIs Mongo e credenciais dos ficheiros versionados; `loadFonteVerdadeEnv` + `requireMongoUri`; scripts de manutenção em `root - Console/scripts/skynet-backend/` (pasta `scripts/` no `.gitignore` da raiz); `backend/scripts` removido do SKYNET com `SCRIPTS_LOCATION.txt`; Cloud Run deploy com `--update-secrets` (MONGO_ENV, GCP_SERVICE_ACCOUNT_KEY, GEMINI_API_KEY, OPENAI_API_KEY). Ajustar nomes de secrets no GCP se diferentes.
+
+### Arquivos modificados:
+- `backend/server.js`, `backend/config/loadFonteVerdadeEnv.js`, `backend/config/requireMongoUri.js`
+- `backend/SCRIPTS_LOCATION.txt` (novo)
+- `backend/scripts/` (removido do repo; cópia em `scripts/skynet-backend/` fora do Git)
+- `cloudbuild.yaml`, `env.example`, `README.md`, `README.md.new`, `DEPLOY_INSTRUCTIONS.md`
+- `package.json` (npm scripts → `../scripts/skynet-backend/`)
+- `DEPLOY_LOG.md`
+
+---
+
 ## GitHub Push - 2026-04-16 (Academy: troféus GCS, uploads, lista temas, CursosConteudo)
 
 **Data/Hora:** 2026-04-16  

@@ -51,7 +51,7 @@ npm install
 Configure as seguintes variáveis no Vercel:
 
 ```bash
-MONGODB_URI=mongodb+srv://REDACTED_ATLAS_URI
+MONGO_ENV=mongodb+srv://REDACTED_ATLAS_URI
 MONGODB_DB_NAME=console_conteudo
 NODE_ENV=production
 CORS_ORIGIN=https://front-console.vercel.app
