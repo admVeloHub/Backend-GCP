@@ -9,7 +9,7 @@
 **Ferramenta:** `py -m git_filter_repo --replace-text` (URIs Mongo → `REDACTED_*`)  
 **Repositório:** admVeloHub/Backend-GCP (origin)  
 **Branch:** main  
-**Commit (tip `main` após reescrita):** f8bfca1  
+**Commit (tip `main` após reescrita + registo no log):** a2f732b  
 
 ### Descrição:
 `git push --force --all` após filter-repo. Clones devem re-alinhar. Foi enviada também a branch local `master` para o remoto (legado); avaliar remoção de `origin/master` se não for usada.
