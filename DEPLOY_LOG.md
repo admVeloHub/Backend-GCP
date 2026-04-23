@@ -12,7 +12,7 @@
 **Commit:** *(tip `main` = último em `origin/main`; `git log -1` após sincronizar)*  
 
 ### Descrição:
-`git push --force --all` após filter-repo. Clones devem re-alinhar. Foi enviada também a branch local `master` para o remoto (legado); avaliar remoção de `origin/master` se não for usada.
+`git push --force --all` após filter-repo. Clones devem re-alinhar. Branch remota `master` eliminada (`git push origin --delete master`); deploy e fluxo Git usam apenas `main`.
 
 ---
 
