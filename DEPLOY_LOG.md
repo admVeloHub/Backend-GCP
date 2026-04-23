@@ -2,14 +2,14 @@
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
 
-## Segurança / higienização - 2026-04-23 (working tree; push pendente)
+## Push GitHub — Segurança / higienização — 2026-04-23
 
 **Data/Hora:** 2026-04-23  
-**Tipo:** Alteração código / segurança  
+**Tipo:** Push GitHub  
 **Versão:** `server.js` v4.21.0, `loadFonteVerdadeEnv.js` v1.0.0, `cloudbuild.yaml` v1.3.0, `env.example` v3.6.0  
 **Repositório:** admVeloHub/Backend-GCP (origin)  
-**Branch:** *(a definir)*  
-**Commit:** *(pendente)*  
+**Branch:** main  
+**Commit:** 42a150d  
 
 ### Descrição:
 Remoção de URIs Mongo e credenciais dos ficheiros versionados; `loadFonteVerdadeEnv` + `requireMongoUri`; scripts de manutenção em `root - Console/scripts/skynet-backend/` (pasta `scripts/` no `.gitignore` da raiz); `backend/scripts` removido do SKYNET com `SCRIPTS_LOCATION.txt`; Cloud Run deploy com `--update-secrets` (MONGO_ENV, GCP_SERVICE_ACCOUNT_KEY, GEMINI_API_KEY, OPENAI_API_KEY). Ajustar nomes de secrets no GCP se diferentes.
