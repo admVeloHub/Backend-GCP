@@ -1,4 +1,5 @@
-// VERSION: v4.21.0 | DATE: 2026-04-23 | AUTHOR: VeloHub Development Team
+// VERSION: v4.23.0 | DATE: 2026-04-29 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.23.0 - Após mongoose: bootstrap EmailTransportConfig (Mongo email_config Gmail API)
 // CHANGELOG: v4.21.0 - Dev: loadFonteVerdadeEnv (bootstrapFonteEnv.cjs ou FONTE DA VERDADE/.env ou VELOHUB_DOTENV_PATH)
 // CHANGELOG: v4.20.1 - Dev: credenciais via FONTE DA VERDADE/.env (bootstrapFonteEnv.cjs)
 // CHANGELOG: v4.20.0 - API GET/PUT /api/academy/quiz-conteudo/quiz/:quizID (coleção quiz_conteudo)
@@ -56,6 +57,7 @@ const userPingRoutes = require('./routes/userPing');
 const usersRoutes = require('./routes/users');
 const moduleStatusRoutes = require('./routes/moduleStatus');
 const faqBotRoutes = require('./routes/faqBot');
+const qualidadeQaFeedbackRoutes = require('./routes/qualidadeQaFeedback');
 const qualidadeRoutes = require('./routes/qualidade');
 const botAnalisesRoutes = require('./routes/botAnalises');
 const botFeedbackRoutes = require('./routes/botFeedback');
@@ -181,6 +183,7 @@ app.use('/api/user-ping', userPingRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/module-status', moduleStatusRoutes);
 app.use('/api/faq-bot', faqBotRoutes);
+app.use('/api/qualidade', qualidadeQaFeedbackRoutes);
 app.use('/api/qualidade', qualidadeRoutes);
 app.use('/api/bot-analises', botAnalisesRoutes);
 app.use('/api/bot-feedback', botFeedbackRoutes);
@@ -381,6 +384,9 @@ const startServer = async () => {
       await mongoose.connect(MONGODB_URI, {
         dbName: 'console_conteudo'
       });
+
+      const { bootstrapEmailTransportFromMongo } = require('./services/emailTransportBootstrap');
+      await bootstrapEmailTransportFromMongo();
       
       console.log(`🗄️ MongoDB: Conectado`);
       console.log(`📊 Collections: Inicializadas`);

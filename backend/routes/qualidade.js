@@ -1,5 +1,9 @@
-// VERSION: v5.21.0 | DATE: 2026-04-15 | AUTHOR: VeloHub Development Team
+// VERSION: v5.25.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
 // CHANGELOG:
+// v5.25.0 - CRUD GET/POST/PUT/DELETE /qa-resgate-items (coleção qa_resgate_items, console_analises)
+// v5.24.0 - Sync Qualidade→config: default _userTickets.gestaoQa ao criar usuário
+// v5.23.0 - qualidade_ticket_avaliacoes: critérios persistidos com nomes PascalCase (FONTE LISTA_SCHEMAS.rb); body aceita sinónimos pos*/neg* do front; modelo QualidadeTicketAvaliacao.js; calcularPontuacaoTicket ajustado
+// v5.22.0 - CRUD /ticket-avaliacoes (coleção qualidade_ticket_avaliacoes); cálculo pontuação alinhado a PONTUACAO_TICKET no front
 // v5.21.0 - Campo ChavePix (credencial Chave Pix) no objeto acessos: validKeys, mensagens, normalizarAcessosParaResposta, POST/PUT funcionários; formato legado array aceita sistema ChavePix / normalizado chavepix
 // v5.20.1 - Release push GitHub 2026-04-10
 // v5.20.0 - POST/PUT avaliacoes: ignora avaliacaoIA no body (nota IA só worker); PUT força somenteAnaliseAudioIA false se critérios no body
@@ -27,10 +31,18 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const QualidadeFuncionario = require('../models/QualidadeFuncionario');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
+const QualidadeTicketAvaliacao = require('../models/QualidadeTicketAvaliacao');
 const QualidadeAvaliacaoGPT = require('../models/QualidadeAvaliacaoGPT');
 const QualidadeAtuacoes = require('../models/QualidadeAtuacoes');
 const QualidadeFuncoes = require('../models/QualidadeFuncoes');
+const QaResgateItem = require('../models/QaResgateItem');
 const Users = require('../models/Users');
+
+const parseQaResgateXpPrice = (raw) => {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+};
 
 // Função helper para gerar _userId a partir de primeiro e último nome
 const gerarUserId = (colaboradorNome) => {
@@ -112,6 +124,7 @@ const syncUserToConfig = async (funcionario, consoleAcesso) => {
           funcionalidades: false,
           recursos: false,
           gestao: false,
+          gestaoQa: false,
           rhFin: false,
           facilities: false
         },
@@ -207,6 +220,66 @@ const calcularPontuacao = (avaliacaoData) => {
   console.log(`🔍 [CALCULAR_PONTUACAO] Pontuação calculada: ${pontuacaoTotal} → ${pontuacaoFinal} (após Math.max)`);
   
   return pontuacaoFinal;
+};
+
+/**
+ * Pontuação avaliação de ticket (coleção qualidade_ticket_avaliacoes).
+ * Campos no documento: ProducaoTexto, ClarezaObjetividade, … (PascalCase — FONTE LISTA_SCHEMAS.rb).
+ * Pesos alinhados a PONTUACAO_TICKET / calcularPontuacaoTotalTicket no front.
+ */
+const calcularPontuacaoTicket = (d) => {
+  if (!d) return 0;
+  let total = 0;
+  if (d.ProducaoTexto) total += 15;
+  if (d.ClarezaObjetividade) total += 15;
+  if (d.BoaResolucaoProcedimento) total += 30;
+  if (d.AderenciaEstruturaResposta) total += 15;
+  if (d.Tabulacao) total += 25;
+  if (d.PassouPrazoResposta) total += -30;
+  if (d.RepassouProcedimentoIncorreto) total += -100;
+  if (d.NaoUtilizouBotApoio) total += -10;
+  return Math.max(0, total);
+};
+
+/** Mapeamento canónico (Mongo) ↔ alias camel opcional (corpo do POST/put do Console). */
+const TICKET_CRITERIO_DEF = [
+  { canon: 'ProducaoTexto', label: 'Produção de texto', alt: 'posProducaoTexto' },
+  { canon: 'ClarezaObjetividade', label: 'Clareza e Objetividade', alt: 'posClarezaObjetividade' },
+  { canon: 'BoaResolucaoProcedimento', label: 'Boa resolução / procedimento', alt: 'posBoaResolucaoProcedimento' },
+  { canon: 'AderenciaEstruturaResposta', label: 'Aderência e estrutura da resposta', alt: 'posAderenciaEstruturaResposta' },
+  { canon: 'Tabulacao', label: 'Tabulação', alt: 'posTabulacao' },
+  { canon: 'PassouPrazoResposta', label: 'Passou do prazo de resposta', alt: 'negPassouPrazoResposta' },
+  { canon: 'RepassouProcedimentoIncorreto', label: 'Repassou procedimento incorreto', alt: 'negRepassouProcedimentoIncorreto' },
+  { canon: 'NaoUtilizouBotApoio', label: 'Não utilização do bot de apoio', alt: 'negNaoUtilizouBotApoio' }
+];
+
+const readCriterioTicketBoolean = (body, canon, alt) => {
+  if (body[canon] !== undefined && body[canon] !== null) {
+    return Boolean(body[canon]);
+  }
+  if (alt && body[alt] !== undefined && body[alt] !== null) {
+    return Boolean(body[alt]);
+  }
+  return null;
+};
+
+const criteriosTicketForCreate = (body) => {
+  const o = {};
+  for (const { canon, alt } of TICKET_CRITERIO_DEF) {
+    const v = readCriterioTicketBoolean(body, canon, alt);
+    o[canon] = v === null ? false : v;
+  }
+  return o;
+};
+
+const criteriosTicketForUpdate = (body, existente) => {
+  const ex = existente && typeof existente.toObject === 'function' ? existente.toObject() : existente || {};
+  const o = {};
+  for (const { canon, alt } of TICKET_CRITERIO_DEF) {
+    const v = readCriterioTicketBoolean(body, canon, alt);
+    o[canon] = v === null ? Boolean(ex[canon]) : v;
+  }
+  return o;
 };
 
 // Função para calcular pontuação GPT com novos critérios (para compatibilidade)
@@ -497,6 +570,62 @@ const validateAvaliacao = (req, res, next) => {
     });
   }
   
+  next();
+};
+
+// Validação para avaliações de ticket (coleção qualidade_ticket_avaliacoes)
+const validateTicketAvaliacao = (req, res, next) => {
+  const { colaboradorNome, avaliador, mes, ano, dataChamado, dataLigacao, numeroTicket } = req.body;
+
+  if (!colaboradorNome || colaboradorNome.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Nome do colaborador é obrigatório' });
+  }
+  if (!avaliador || avaliador.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Avaliador é obrigatório' });
+  }
+  if (!mes || mes.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Mês é obrigatório' });
+  }
+  if (!req.body.ano) {
+    return res.status(400).json({ success: false, message: 'Ano é obrigatório' });
+  }
+  const anoNumber = typeof req.body.ano === 'string' ? parseInt(req.body.ano, 10) : req.body.ano;
+  if (isNaN(anoNumber)) {
+    return res.status(400).json({ success: false, message: 'Ano deve ser um número válido' });
+  }
+
+  const dataRef = dataChamado != null ? dataChamado : dataLigacao;
+  if (!dataRef) {
+    return res.status(400).json({ success: false, message: 'Data do chamado é obrigatória' });
+  }
+  const d = new Date(dataRef);
+  if (isNaN(d.getTime())) {
+    return res.status(400).json({ success: false, message: 'Data do chamado deve ser uma data válida' });
+  }
+
+  if (numeroTicket === undefined || numeroTicket === null || numeroTicket === '') {
+    return res.status(400).json({ success: false, message: 'Número do ticket é obrigatório' });
+  }
+  const n = typeof numeroTicket === 'string' ? parseInt(numeroTicket.replace(/\D/g, ''), 10) : Number(numeroTicket);
+  if (isNaN(n) || n < 0) {
+    return res.status(400).json({ success: false, message: 'Número do ticket deve ser um número válido' });
+  }
+
+  for (const { canon, label, alt } of TICKET_CRITERIO_DEF) {
+    for (const field of [canon, alt].filter(Boolean)) {
+      if (
+        field &&
+        req.body[field] !== undefined &&
+        req.body[field] !== null &&
+        typeof req.body[field] !== 'boolean'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `${label} (${field}) deve ser booleano (true ou false)`
+        });
+      }
+    }
+  }
   next();
 };
 
@@ -1540,6 +1669,137 @@ router.delete('/avaliacoes/:id', async (req, res) => {
   }
 });
 
+// ==================== AVALIAÇÕES DE TICKET (qualidade_ticket_avaliacoes) ====================
+
+// GET /api/qualidade/ticket-avaliacoes
+router.get('/ticket-avaliacoes', async (req, res) => {
+  try {
+    const list = await QualidadeTicketAvaliacao.find({}).sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      data: list,
+      count: list.length
+    });
+  } catch (error) {
+    console.error('[QUALIDADE-TICKET-AVALIACOES] Erro GET lista:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor ao buscar avaliações de ticket',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// GET /api/qualidade/ticket-avaliacoes/:id
+router.get('/ticket-avaliacoes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'ID inválido' });
+    }
+    const doc = await QualidadeTicketAvaliacao.findById(id);
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Avaliação de ticket não encontrada' });
+    }
+    res.json({ success: true, data: doc });
+  } catch (error) {
+    console.error('[QUALIDADE-TICKET-AVALIACOES] Erro GET por id:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor ao buscar avaliação de ticket' });
+  }
+});
+
+// POST /api/qualidade/ticket-avaliacoes
+router.post('/ticket-avaliacoes', validateTicketAvaliacao, async (req, res) => {
+  try {
+    const dataRef = req.body.dataChamado != null ? req.body.dataChamado : req.body.dataLigacao;
+    const nRaw = req.body.numeroTicket;
+    const n = typeof nRaw === 'string' ? parseInt(nRaw.replace(/\D/g, ''), 10) : Number(nRaw);
+
+    const criterios = criteriosTicketForCreate(req.body);
+    const avaliacaoData = {
+      colaboradorNome: req.body.colaboradorNome,
+      avaliador: req.body.avaliador,
+      mes: req.body.mes,
+      ano: typeof req.body.ano === 'string' ? parseInt(req.body.ano, 10) : req.body.ano,
+      observacoes: req.body.observacoes != null ? String(req.body.observacoes) : '',
+      dataChamado: new Date(dataRef),
+      numeroTicket: n,
+      ...criterios
+    };
+
+    avaliacaoData.pontuacaoTotal = calcularPontuacaoTicket(avaliacaoData);
+
+    const salva = await new QualidadeTicketAvaliacao(avaliacaoData).save();
+    res.status(201).json({
+      success: true,
+      data: salva,
+      message: 'Avaliação de ticket criada com sucesso'
+    });
+  } catch (error) {
+    console.error('[QUALIDADE-TICKET-AVALIACOES] Erro POST:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor ao criar avaliação de ticket' });
+  }
+});
+
+// PUT /api/qualidade/ticket-avaliacoes/:id
+router.put('/ticket-avaliacoes/:id', validateTicketAvaliacao, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'ID inválido' });
+    }
+    const existente = await QualidadeTicketAvaliacao.findById(id);
+    if (!existente) {
+      return res.status(404).json({ success: false, message: 'Avaliação de ticket não encontrada' });
+    }
+
+    const dataRef = req.body.dataChamado != null ? req.body.dataChamado : req.body.dataLigacao;
+    const nRaw = req.body.numeroTicket;
+    const n = typeof nRaw === 'string' ? parseInt(nRaw.replace(/\D/g, ''), 10) : Number(nRaw);
+
+    const criterios = criteriosTicketForUpdate(req.body, existente);
+    const updateData = {
+      colaboradorNome: req.body.colaboradorNome,
+      avaliador: req.body.avaliador,
+      mes: req.body.mes,
+      ano: typeof req.body.ano === 'string' ? parseInt(req.body.ano, 10) : req.body.ano,
+      observacoes: req.body.observacoes != null ? String(req.body.observacoes) : '',
+      dataChamado: new Date(dataRef),
+      numeroTicket: n,
+      ...criterios
+    };
+
+    updateData.pontuacaoTotal = calcularPontuacaoTicket({ ...existente.toObject(), ...updateData });
+
+    const atualizada = await QualidadeTicketAvaliacao.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true
+    });
+    res.json({ success: true, data: atualizada, message: 'Avaliação de ticket atualizada com sucesso' });
+  } catch (error) {
+    console.error('[QUALIDADE-TICKET-AVALIACOES] Erro PUT:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor ao atualizar avaliação de ticket' });
+  }
+});
+
+// DELETE /api/qualidade/ticket-avaliacoes/:id
+router.delete('/ticket-avaliacoes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'ID inválido' });
+    }
+    const rem = await QualidadeTicketAvaliacao.findByIdAndDelete(id);
+    if (!rem) {
+      return res.status(404).json({ success: false, message: 'Avaliação de ticket não encontrada', id });
+    }
+    res.json({ success: true, data: rem, message: 'Avaliação de ticket deletada com sucesso' });
+  } catch (error) {
+    console.error('[QUALIDADE-TICKET-AVALIACOES] Erro DELETE:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor ao deletar avaliação de ticket' });
+  }
+});
+
 // GET /api/qualidade/avaliacoes/colaborador/:nome - Buscar avaliações por colaborador
 router.get('/avaliacoes/colaborador/:nome', async (req, res) => {
   try {
@@ -2469,6 +2729,87 @@ router.delete('/funcoes/:id', async (req, res) => {
     };
     console.log('🔍 [COMPLIANCE] DELETE /api/qualidade/funcoes/:id - Error Response:', response);
     res.status(500).json(response);
+  }
+});
+
+// ==================== QA RESGATE ITEMS (qa_resgate_items) ====================
+
+// GET /api/qualidade/qa-resgate-items
+router.get('/qa-resgate-items', async (req, res) => {
+  try {
+    const items = await QaResgateItem.find({}).sort({ createdAt: -1 }).lean();
+    res.json({ success: true, data: items });
+  } catch (error) {
+    console.error('[QA-RESGATE-ITEMS] GET:', error);
+    res.status(500).json({ success: false, error: 'Erro ao listar itens de resgate' });
+  }
+});
+
+// POST /api/qualidade/qa-resgate-items
+router.post('/qa-resgate-items', async (req, res) => {
+  try {
+    const item = String(req.body?.item ?? '').trim();
+    const xpPrice = parseQaResgateXpPrice(req.body?.xpPrice);
+    if (!item) {
+      return res.status(400).json({ success: false, error: 'Campo item é obrigatório' });
+    }
+    if (xpPrice === null) {
+      return res.status(400).json({ success: false, error: 'xpPrice deve ser um número >= 0' });
+    }
+    const doc = new QaResgateItem({ item, xpPrice });
+    const saved = await doc.save();
+    res.status(201).json({ success: true, data: saved });
+  } catch (error) {
+    console.error('[QA-RESGATE-ITEMS] POST:', error);
+    res.status(500).json({ success: false, error: 'Erro ao criar item de resgate' });
+  }
+});
+
+// PUT /api/qualidade/qa-resgate-items/:id
+router.put('/qa-resgate-items/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: 'ID inválido' });
+    }
+    const item = String(req.body?.item ?? '').trim();
+    const xpPrice = parseQaResgateXpPrice(req.body?.xpPrice);
+    if (!item) {
+      return res.status(400).json({ success: false, error: 'Campo item é obrigatório' });
+    }
+    if (xpPrice === null) {
+      return res.status(400).json({ success: false, error: 'xpPrice deve ser um número >= 0' });
+    }
+    const updated = await QaResgateItem.findByIdAndUpdate(
+      id,
+      { $set: { item, xpPrice, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    ).lean();
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Item não encontrado' });
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('[QA-RESGATE-ITEMS] PUT:', error);
+    res.status(500).json({ success: false, error: 'Erro ao atualizar item de resgate' });
+  }
+});
+
+// DELETE /api/qualidade/qa-resgate-items/:id
+router.delete('/qa-resgate-items/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: 'ID inválido' });
+    }
+    const deleted = await QaResgateItem.findByIdAndDelete(id).lean();
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Item não encontrado' });
+    }
+    res.json({ success: true, data: deleted, message: 'Item removido' });
+  } catch (error) {
+    console.error('[QA-RESGATE-ITEMS] DELETE:', error);
+    res.status(500).json({ success: false, error: 'Erro ao remover item de resgate' });
   }
 });
 

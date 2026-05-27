@@ -1,4 +1,5 @@
-// VERSION: v1.0.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.1.0 - Gestão + direcionamento "qa" → tipo _userTickets gestaoQa
 /**
  * Utilitários para manipulação de tickets
  * - Mapeamento de gênero para ticketType
@@ -6,12 +7,25 @@
  */
 
 /**
+ * Direcionamento do gênero Gestão que exige permissão gestaoQa (valor em _direcionamento).
+ * @param {string|null|undefined} direcionamento
+ * @returns {boolean}
+ */
+function isGestaoQaDirecionamento(direcionamento) {
+  if (direcionamento == null || typeof direcionamento !== 'string') {
+    return false;
+  }
+  return direcionamento.toLowerCase().trim() === 'qa';
+}
+
+/**
  * Mapeia o gênero do ticket para o tipo usado em _userTickets
  * @param {string} genero - Gênero do ticket (ex: 'artigo', 'processo', 'gestão')
  * @param {string} collectionType - Tipo de coleção ('tk_conteudos' ou 'tk_gestao')
+ * @param {string|null|undefined} direcionamento - Para tk_gestao: _direcionamento (ex: 'qa' → gestaoQa)
  * @returns {string|null} - Tipo do ticket para _userTickets ou null se não mapeado
  */
-function mapGeneroToTicketType(genero, collectionType = 'tk_conteudos') {
+function mapGeneroToTicketType(genero, collectionType = 'tk_conteudos', direcionamento = null) {
   if (!genero || typeof genero !== 'string') {
     return null;
   }
@@ -33,7 +47,11 @@ function mapGeneroToTicketType(genero, collectionType = 'tk_conteudos') {
 
     return mapping[generoLower] || null;
   } else if (collectionType === 'tk_gestao') {
-    // Mapeamento para tk_gestao
+    if ((generoLower === 'gestão' || generoLower === 'gestao') && isGestaoQaDirecionamento(direcionamento)) {
+      return 'gestaoQa';
+    }
+
+    // Mapeamento para tk_gestao (demais gêneros e Gestão sem direcionamento QA)
     const mapping = {
       'gestão': 'gestao',
       'gestao': 'gestao',
@@ -82,11 +100,13 @@ function getTicketTypeFromTicket(ticket, collectionType) {
     return null;
   }
 
-  return mapGeneroToTicketType(ticket._genero, collectionType);
+  const direcionamento = collectionType === 'tk_gestao' ? ticket._direcionamento : null;
+  return mapGeneroToTicketType(ticket._genero, collectionType, direcionamento);
 }
 
 module.exports = {
   mapGeneroToTicketType,
   isSLAExpired,
-  getTicketTypeFromTicket
+  getTicketTypeFromTicket,
+  isGestaoQaDirecionamento
 };

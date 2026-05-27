@@ -1,12 +1,23 @@
-// VERSION: v1.0.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+// VERSION: v2.0.8 | DATE: 2026-05-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.0.8 - sendDenunciaVelohubEmail (canal denúncias VeloHub → DENUNCIA_EMAIL_TO)
+// CHANGELOG: v2.0.7 - Template novas mensagens: texto “interagiu novamente… Acesse o console para responder.”
+// CHANGELOG: v2.0.6 - Mensagem do solicitante: assunto e HTML distintos do e-mail de “novo ticket na categoria” — “Seu ticket nº … tem novas mensagens” + texto de novo conteúdo do solicitante no Apoio
+// CHANGELOG: v2.0.5 - getSLAExpiredTemplate: fechamento do template literal/HTML + JSDoc fora da string — corrige SyntaxError ao subir o servidor
+// CHANGELOG: v2.0.3 - Fallback CONSOLE_URL nos templates (links chamados-internos): Cloud Run console-v2; prioridade: env CONSOLE_URL
+// CHANGELOG: v2.0.2 - isReady(): Gmail API carregado do Mongo (hasGmailMongoReady) dispensa EMAIL_ENABLED — alinha com sendGmailTestMessage e evita email_not_ready após restart sem env
+// CHANGELOG: v2.0.1 - E-mail "nova resposta": corpo da mensagem não é mais incluído (só dados do ticket + link)
+// CHANGELOG: v2.0.0 - Envio via Gmail API (Mongo + service account + delegação) além do SMTP/Nodemailer; dispatch unificado para tickets
 /**
- * Serviço de envio de emails usando Nodemailer
- * Templates HTML para notificações de tickets
+ * Serviço de envio de e-mails: Nodemailer (SMTP) e/ou Gmail API (credenciais MongoDB singleton).
  */
 const nodemailer = require('nodemailer');
+const { sendViaGmailApi } = require('./gmailApiSend');
 
 // Estado global do serviço
 let transporter = null;
+/** Estado carregado de models/EmailTransportConfig (console_config.email_config, _id email_tk_notifications) */
+let mongoTransportSnapshot = null;
+
 let emailEnabled = process.env.EMAIL_ENABLED === 'true';
 let emailConfig = {
   host: process.env.SMTP_HOST || '',
@@ -18,7 +29,93 @@ let emailConfig = {
   }
 };
 let emailFrom = process.env.EMAIL_FROM || 'noreply@velohub.com.br';
-let consoleUrl = process.env.CONSOLE_URL || 'https://console.velotax.com.br';
+let consoleUrl = String(
+  process.env.CONSOLE_URL || 'https://console-v2-hfsqj6konq-ue.a.run.app'
+).replace(/\/+$/, '');
+
+function hasGmailMongoReady() {
+  const m = mongoTransportSnapshot;
+  const sa = m?.serviceAccountJson;
+  return !!(
+    m &&
+    typeof m.defaultFromEmail === 'string' &&
+    m.defaultFromEmail.includes('@') &&
+    typeof m.delegatedUserEmail === 'string' &&
+    m.delegatedUserEmail.includes('@') &&
+    sa &&
+    typeof sa.private_key === 'string' &&
+    typeof sa.client_email === 'string'
+  );
+}
+
+/**
+ * Injeta/atualiza configuração lida do MongoDB (coleção configurável pelo cluster).
+ */
+function applyMongoTransport(doc) {
+  if (!doc) {
+    mongoTransportSnapshot = null;
+    return;
+  }
+  if (doc.transportMode === 'smtp') {
+    mongoTransportSnapshot = null;
+    return;
+  }
+  mongoTransportSnapshot = {
+    transportMode: 'gmail_api',
+    defaultFromEmail: (doc.defaultFromEmail || '').trim().toLowerCase(),
+    delegatedUserEmail: (doc.delegatedUserEmail || doc.defaultFromEmail || '').trim().toLowerCase(),
+    serviceAccountJson: doc.serviceAccountJson || null
+  };
+  if (
+    mongoTransportSnapshot.defaultFromEmail &&
+    !mongoTransportSnapshot.delegatedUserEmail.includes('@')
+  ) {
+    mongoTransportSnapshot.delegatedUserEmail = mongoTransportSnapshot.defaultFromEmail;
+  }
+}
+
+async function reloadMongoTransportFromDb() {
+  const EmailTransportConfig = require('../models/EmailTransportConfig');
+  const doc = await EmailTransportConfig.findSingletonLean();
+  applyMongoTransport(doc);
+}
+
+function getEffectiveFromAddress() {
+  if (hasGmailMongoReady()) {
+    return mongoTransportSnapshot.defaultFromEmail;
+  }
+  return emailFrom;
+}
+
+/**
+ * SMTP (Nodemailer) ou Gmail API (delegação).
+ */
+async function dispatchOutgoingMail({ to, subject, html }) {
+  const fromAddr = getEffectiveFromAddress();
+
+  if (hasGmailMongoReady()) {
+    await sendViaGmailApi(
+      {
+        serviceAccountJson: mongoTransportSnapshot.serviceAccountJson,
+        delegatedUserEmail: mongoTransportSnapshot.delegatedUserEmail
+      },
+      { from: fromAddr, to: String(to).trim(), subject, html }
+    );
+    return true;
+  }
+
+  if (!transporter) {
+    throw new Error('SMTP não inicializado');
+  }
+
+  await transporter.sendMail({
+    from: fromAddr,
+    to,
+    subject,
+    html
+  });
+  return true;
+}
 
 /**
  * Inicializa o transporter do Nodemailer
@@ -84,7 +181,13 @@ function setEnabled(enabled) {
  * @returns {boolean}
  */
 function isReady() {
-  return emailEnabled && transporter !== null;
+  if (hasGmailMongoReady()) {
+    return true;
+  }
+  if (!emailEnabled) {
+    return false;
+  }
+  return transporter !== null;
 }
 
 /**
@@ -107,7 +210,7 @@ function getNewTicketTemplate(ticket, ticketId, ticketType) {
     .header { background-color: #1634FF; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
     .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
     .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #1634FF; border-radius: 4px; }
-    .button { display: inline-block; background-color: #1634FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; }
+    .button { display: inline-block; background-color: #1634FF; color: #ffffff !important; -webkit-text-fill-color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; font-weight: 600; }
     .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
   </style>
 </head>
@@ -128,7 +231,7 @@ function getNewTicketTemplate(ticket, ticketId, ticketType) {
         <strong>Data:</strong> ${data}
       </div>
 
-      <a href="${link}" class="button">Ver Ticket</a>
+      <a href="${link}" class="button" style="display:inline-block;background-color:#1634FF;color:#ffffff !important;-webkit-text-fill-color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:4px;margin-top:20px;font-weight:600;"><span style="color:#ffffff;text-decoration:none;mso-line-height-rule:exactly;">Ver Ticket</span></a>
       
       <div class="footer">
         <p>Este é um email automático do sistema VeloHub Console.</p>
@@ -141,13 +244,12 @@ function getNewTicketTemplate(ticket, ticketId, ticketType) {
 }
 
 /**
- * Template HTML para nova resposta recebida
+ * E-mail: nova mensagem do solicitante no Apoio (VeloHub → notify-user-reply ou PUT Console com _novaMensagem autor user).
+ * Texto e assunto próprios — não reutilizar o template de abertura/atribuição na categoria.
  */
-function getNewReplyTemplate(ticket, ticketId, replyMessage) {
+function getNewReplyTemplate(ticket, ticketId) {
   const assunto = ticket._assunto || ticket._direcionamento || 'Sem assunto';
   const solicitante = ticket._userEmail || 'N/A';
-  const mensagem = replyMessage.mensagem || 'N/A';
-  const data = new Date(replyMessage.timestamp || Date.now()).toLocaleString('pt-BR');
   const link = `${consoleUrl}/chamados-internos?ticket=${ticketId}`;
 
   return `
@@ -161,34 +263,28 @@ function getNewReplyTemplate(ticket, ticketId, replyMessage) {
     .header { background-color: #1634FF; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
     .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
     .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #1634FF; border-radius: 4px; }
-    .message-box { background-color: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 4px; font-style: italic; }
-    .button { display: inline-block; background-color: #1634FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; }
+    .button { display: inline-block; background-color: #1634FF; color: #ffffff !important; -webkit-text-fill-color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; font-weight: 600; }
     .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>Nova Resposta Recebida</h1>
+      <h1 style="margin:0;font-size:22px;">Novas mensagens no chamado</h1>
     </div>
     <div class="content">
       <p>Olá,</p>
-      <p>O ticket <strong>#${ticketId}</strong> recebeu uma nova resposta do usuário:</p>
-      
+      <p><strong>Seu ticket nº ${ticketId} tem novas mensagens.</strong></p>
+      <p>O solicitante interagiu novamente com o chamado. Acesse o console para responder.</p>
+
       <div class="info-box">
-        <strong>ID do Ticket:</strong> ${ticketId}<br>
+        <strong>Ticket:</strong> ${ticketId}<br>
         <strong>Assunto:</strong> ${assunto}<br>
-        <strong>Solicitante:</strong> ${solicitante}
+        <strong>E-mail do solicitante:</strong> ${solicitante}
       </div>
 
-      <div class="message-box">
-        <strong>Nova Mensagem:</strong><br>
-        ${mensagem}<br>
-        <small>Enviada em: ${data}</small>
-      </div>
+      <a href="${link}" class="button" style="display:inline-block;background-color:#1634FF;color:#ffffff !important;-webkit-text-fill-color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:4px;margin-top:20px;font-weight:600;"><span style="color:#ffffff;text-decoration:none;mso-line-height-rule:exactly;">Abrir no Console</span></a>
 
-      <a href="${link}" class="button">Ver Ticket</a>
-      
       <div class="footer">
         <p>Este é um email automático do sistema VeloHub Console.</p>
       </div>
@@ -222,7 +318,7 @@ function getSLAExpiredTemplate(ticket, ticketId) {
     .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
     .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #EF4444; border-radius: 4px; }
     .warning-box { background-color: #FFF3CD; padding: 15px; margin: 10px 0; border-left: 4px solid #FFC107; border-radius: 4px; }
-    .button { display: inline-block; background-color: #EF4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; }
+    .button { display: inline-block; background-color: #EF4444; color: #ffffff !important; -webkit-text-fill-color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 20px; font-weight: 600; }
     .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
   </style>
 </head>
@@ -248,7 +344,7 @@ function getSLAExpiredTemplate(ticket, ticketId) {
         Por favor, resolva o ticket o mais rápido possível.
       </div>
 
-      <a href="${link}" class="button">Ver Ticket</a>
+      <a href="${link}" class="button" style="display:inline-block;background-color:#EF4444;color:#ffffff !important;-webkit-text-fill-color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:4px;margin-top:20px;font-weight:600;"><span style="color:#ffffff;text-decoration:none;mso-line-height-rule:exactly;">Ver Ticket</span></a>
       
       <div class="footer">
         <p>Este é um email automático do sistema VeloHub Console.</p>
@@ -278,11 +374,10 @@ async function sendTicketAssignedEmail(ticket, ticketId, ticketType, recipientEm
     const assunto = ticket._assunto || ticket._direcionamento || 'Sem assunto';
     const html = getNewTicketTemplate(ticket, ticketId, ticketType);
 
-    await transporter.sendMail({
-      from: emailFrom,
+    await dispatchOutgoingMail({
       to: recipientEmail,
       subject: `[Ticket ${ticketId}] Novo ticket atribuído - ${assunto}`,
-      html: html
+      html
     });
 
     global.emitLog('success', `emailService.sendTicketAssignedEmail - Email enviado para ${recipientEmail}`);
@@ -308,13 +403,12 @@ async function sendTicketReplyEmail(ticket, ticketId, replyMessage, recipientEma
   }
 
   try {
-    const html = getNewReplyTemplate(ticket, ticketId, replyMessage);
+    const html = getNewReplyTemplate(ticket, ticketId);
 
-    await transporter.sendMail({
-      from: emailFrom,
+    await dispatchOutgoingMail({
       to: recipientEmail,
-      subject: `[Ticket ${ticketId}] Nova resposta recebida`,
-      html: html
+      subject: `[Ticket ${ticketId}] Seu ticket nº ${ticketId} tem novas mensagens`,
+      html
     });
 
     global.emitLog('success', `emailService.sendTicketReplyEmail - Email enviado para ${recipientEmail}`);
@@ -341,11 +435,10 @@ async function sendSLAExpiredEmail(ticket, ticketId, recipientEmail) {
   try {
     const html = getSLAExpiredTemplate(ticket, ticketId);
 
-    await transporter.sendMail({
-      from: emailFrom,
+    await dispatchOutgoingMail({
       to: recipientEmail,
       subject: `[Ticket ${ticketId}] ⚠️ SLA Vencido`,
-      html: html
+      html
     });
 
     global.emitLog('success', `emailService.sendSLAExpiredEmail - Email enviado para ${recipientEmail}`);
@@ -387,15 +480,92 @@ if (emailConfig.host && emailConfig.auth.user && emailConfig.auth.pass) {
   });
 }
 
+/**
+ * E-mail de teste (aba Conexões) — Gmail API.
+ */
+async function sendGmailTestMessage({ to }) {
+  if (!hasGmailMongoReady()) {
+    throw new Error('Configuração Gmail incompleta no servidor');
+  }
+  const dest = String(to || mongoTransportSnapshot.delegatedUserEmail).trim();
+  await dispatchOutgoingMail({
+    to: dest,
+    subject: '[VeloHub] Teste de envio Gmail API',
+    html:
+      `<p>Este é um e-mail de teste enviado pelo Console (configurações &gt; Conexões).</p><p>${new Date().toISOString()}</p>`
+  });
+}
+
+function escapeHtmlForEmail(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * E-mail do canal de denúncias (VeloHub → destinatário configurado).
+ * @param {{ to: string, modoComunicacao: string, mensagem: string, reportedBy?: { name: string, email: string } | null }} params
+ */
+async function sendDenunciaVelohubEmail({ to, modoComunicacao, mensagem, reportedBy }) {
+  const modo = modoComunicacao === 'identificado' ? 'identificado' : 'anonimo';
+  const subject =
+    modo === 'identificado'
+      ? '[VeloHub] Denúncia — Identificada'
+      : '[VeloHub] Denúncia — Anônima';
+
+  const safeMsg = escapeHtmlForEmail(mensagem).replace(/\n/g, '<br/>');
+  const when = new Date().toISOString();
+
+  let identityBlock = '<p><strong>Remetente:</strong> Anônimo</p>';
+  if (modo === 'identificado' && reportedBy) {
+    identityBlock =
+      `<p><strong>Nome:</strong> ${escapeHtmlForEmail(reportedBy.name)}</p>` +
+      `<p><strong>E-mail:</strong> ${escapeHtmlForEmail(reportedBy.email)}</p>`;
+  }
+
+  const html =
+    `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;">` +
+    `<h2 style="color:#006ab9;">Canal de denúncias — VeloHub</h2>` +
+    `<p><strong>Modo:</strong> ${modo === 'identificado' ? 'Identificado' : 'Anônimo'}</p>` +
+    identityBlock +
+    `<p><strong>Recebido em:</strong> ${when}</p>` +
+    `<hr style="border:none;border-top:1px solid #ccc;margin:16px 0;"/>` +
+    `<p><strong>Manifestação:</strong></p>` +
+    `<p style="white-space:pre-wrap;">${safeMsg}</p>` +
+    `</div>`;
+
+  await dispatchOutgoingMail({ to: String(to).trim(), subject, html });
+}
+
 module.exports = {
   initializeTransporter,
   updateConfig,
   setEnabled,
   isReady,
+  hasGmailMongoReady,
+  applyMongoTransport,
+  reloadMongoTransportFromDb,
+  sendGmailTestMessage,
+  sendDenunciaVelohubEmail,
   sendTicketAssignedEmail,
   sendTicketReplyEmail,
   sendSLAExpiredEmail,
   testConnection,
+  getEffectiveFromAddress,
   getConfig: () => ({ ...emailConfig, from: emailFrom }),
+  getMongoTransportSnapshotSanitized() {
+    if (!mongoTransportSnapshot) return null;
+    const sa = mongoTransportSnapshot.serviceAccountJson || {};
+    return {
+      transportMode: mongoTransportSnapshot.transportMode,
+      defaultFromEmail: mongoTransportSnapshot.defaultFromEmail,
+      delegatedUserEmail: mongoTransportSnapshot.delegatedUserEmail,
+      hasServiceAccount: !!(sa.private_key && sa.client_email),
+      serviceAccountClientEmail: sa.client_email || ''
+    };
+  },
   getEnabled: () => emailEnabled
 };

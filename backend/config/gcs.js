@@ -1,4 +1,7 @@
-// VERSION: v1.17.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// VERSION: v1.18.2 | DATE: 2026-04-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.18.2 - parseGcpServiceAccountKey: lixo antes do primeiro "{"; mensagem específica para "{' (chaves com aspas simples)
+// CHANGELOG: v1.18.1 - uploadAcademyTrophyImage: normalizar folder (multipart/alias) para aceitar qa_trophies de forma robusta
+// CHANGELOG: v1.18.0 - qa_trophies: pasta permitida no upload de troféu + isAcademyTrophyObjectPath (proxy GET academy-trophy-media)
 // CHANGELOG: v1.17.0 - listAcademyTrophyTemasObjects: listar imagens em icones_conquistas/temas/ (reutilizar no Console)
 // CHANGELOG: v1.16.0 - Troféus Academy: objeto = icones_conquistas/modulos|temas (bucket já é mediabank_academy; sem pasta duplicada)
 // CHANGELOG: v1.15.0 - isAcademyTrophyObjectPath: validação path para GET proxy (leitura privada)
@@ -119,6 +122,13 @@ function parseGcpServiceAccountKey(raw) {
   if (s.startsWith('=') && s.includes('{')) {
     s = s.slice(1).trim();
   }
+  // Rótulos / texto acidental antes do JSON (primeiro objeto começa sempre em "{")
+  if (!s.startsWith('{') && !s.startsWith('[') && !s.startsWith('"')) {
+    const lead = s.indexOf('{');
+    if (lead > 0) {
+      s = s.slice(lead).trim();
+    }
+  }
 
   const tryParse = (input) => {
     try {
@@ -167,6 +177,13 @@ function parseGcpServiceAccountKey(raw) {
   cred = tryParse(sSingleToDouble);
   if (cred && isLikelyGcpServiceAccountJson(cred)) {
     return cred;
+  }
+
+  // Erro típico na coluna 2: {" → inválido; {'type' não é JSON
+  if (/^\{\s+'/.test(s)) {
+    throw new Error(
+      'GCP_SERVICE_ACCOUNT_KEY: JSON inválido — após { aparecem aspas simples nas chaves; JSON exige apenas aspas duplas. Volte a colar o ficheiro .json original da Google (minificado numa linha se preferir), sem converter para objeto JavaScript.'
+    );
   }
 
   let lastErr = 'parse falhou';
@@ -933,20 +950,39 @@ const uploadImage = async (fileBuffer, fileName, mimeType, folder = 'img_velonew
   }
 };
 
-/** Pastas permitidas para troféus Academy (upload via backend) — alinhado a AcademyPage / LISTA_SCHEMAS */
+/** Pastas permitidas para troféus Academy (upload via backend) — alinhado a AcademyPage / LISTA_SCHEMAS + QA (qa_trophies) */
 const ACADEMY_TROPHY_UPLOAD_FOLDERS = [
   'icones_conquistas/modulos',
-  'icones_conquistas/temas'
+  'icones_conquistas/temas',
+  'qa_trophies'
 ];
 
 /**
- * Objeto no bucket (path completo). Forma correta: icones_conquistas/modulos|temas/arquivo.
- * Aceita também legado mediabank_academy/icones_conquistas/... (uploads antigos com prefixo errado).
+ * Multipart pode enviar folder como string, array ou com prefixo legado; Console usa folder fixo qa_trophies (QA Gerenciar).
+ * @param {unknown} raw
+ * @returns {string}
+ */
+function normalizeAcademyTrophyUploadFolder(raw) {
+  if (raw == null) return '';
+  let s = Array.isArray(raw) ? raw[0] : raw;
+  s = String(s).trim();
+  if (!s) return '';
+  const noBucket = s.replace(/^mediabank_academy\//, '');
+  if (noBucket === 'qa_trophies' || noBucket.toLowerCase() === 'qa_trophies') return 'qa_trophies';
+  if (/^qa_trophies\//i.test(noBucket)) return 'qa_trophies';
+  return noBucket;
+}
+
+/**
+ * Objeto no bucket (path completo). Forma correta: icones_conquistas/modulos|temas/arquivo ou qa_trophies/arquivo.
+ * Aceita também legado mediabank_academy/icones_conquistas/... ou mediabank_academy/qa_trophies/... (prefixo duplicado).
  */
 function isAcademyTrophyObjectPath(objectPath) {
   if (typeof objectPath !== 'string') return false;
   if (/^icones_conquistas\/(modulos|temas)\/[^/]+$/.test(objectPath)) return true;
   if (/^mediabank_academy\/icones_conquistas\/(modulos|temas)\/[^/]+$/.test(objectPath)) return true;
+  if (/^qa_trophies\/[^/]+$/.test(objectPath)) return true;
+  if (/^mediabank_academy\/qa_trophies\/[^/]+$/.test(objectPath)) return true;
   return false;
 }
 
@@ -955,8 +991,11 @@ function isAcademyTrophyObjectPath(objectPath) {
  * Evita CORS no cliente (PUT direto a storage.googleapis.com exige CORS no bucket).
  */
 const uploadAcademyTrophyImage = async (fileBuffer, fileName, mimeType, folder) => {
-  if (!ACADEMY_TROPHY_UPLOAD_FOLDERS.includes(folder)) {
-    throw new Error(`Pasta de troféu Academy inválida. Use: ${ACADEMY_TROPHY_UPLOAD_FOLDERS.join(' ou ')}`);
+  const folderNorm = normalizeAcademyTrophyUploadFolder(folder);
+  if (!ACADEMY_TROPHY_UPLOAD_FOLDERS.includes(folderNorm)) {
+    throw new Error(
+      `Pasta de troféu Academy inválida. Use: ${ACADEMY_TROPHY_UPLOAD_FOLDERS.join(' ou ')}`
+    );
   }
   if (!GCS_BUCKET_NAME_ACADEMY_TROPHIES) {
     throw new Error('GCS_BUCKET_NAME3 não está configurado (bucket mediabank_academy).');
@@ -977,7 +1016,7 @@ const uploadAcademyTrophyImage = async (fileBuffer, fileName, mimeType, folder) 
   }
 
   const timestamp = Date.now();
-  const uniqueFileName = `${folder}/${timestamp}-${fileName}`;
+  const uniqueFileName = `${folderNorm}/${timestamp}-${fileName}`;
   const file = bucket.file(uniqueFileName);
 
   await file.save(fileBuffer, {
@@ -1049,6 +1088,7 @@ module.exports = {
   getFileMetadata,
   uploadImage,
   uploadAcademyTrophyImage,
+  normalizeAcademyTrophyUploadFolder,
   listAcademyTrophyTemasObjects,
   isAcademyTrophyObjectPath,
   publishAudioToPubSub,

@@ -1,7 +1,10 @@
-// VERSION: v1.0.0 | DATE: 2025-02-02 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.1 | DATE: 2026-05-01 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.2.1 - PUT /gmail-config (gmail_api): ativa envio na memória do processo, alinhado ao PUT SMTP, para notificações de ticket
+// CHANGELOG: v1.2.0 - GET/PUT /gmail-config, POST /gmail-test; status com gmailReady/transportHint; toggle aceita Gmail Mongo (sem SMTP)
+// CHANGELOG: v1.1.0 - PUT /config: após SMTP válido, ativa envio automaticamente para notificações (tickets etc.) funcionarem sem segundo passo manual
 /**
  * VeloHub SKYNET - Email Service API Routes
- * 
+ *
  * Rotas para gerenciamento de serviço de email
  * Requer permissão 'whatsapp' (mesma permissão do módulo Conexões)
  */
@@ -10,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { checkPermission } = require('../middleware/auth');
 const emailService = require('../services/emailService');
+const EmailTransportConfig = require('../models/EmailTransportConfig');
 
 // Middleware de autenticação
 const requirePermission = checkPermission('whatsapp');
@@ -27,9 +31,11 @@ const maskPassword = (password) => {
   return `${first}***${last}`;
 };
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /**
  * GET /api/email/status
- * Obter status da conexão SMTP
+ * Status do serviço (SMTP e/ou Gmail API via Mongo)
  */
 router.get('/status', requirePermission, async (req, res) => {
   try {
@@ -37,14 +43,21 @@ router.get('/status', requirePermission, async (req, res) => {
     global.emitLog('info', 'GET /api/email/status - Verificando status do serviço de email');
 
     const enabled = emailService.getEnabled();
-    const isReady = emailService.isReady();
     const config = emailService.getConfig();
+    const gmailReady =
+      typeof emailService.hasGmailMongoReady === 'function' && emailService.hasGmailMongoReady();
 
-    // Tentar verificar conexão se configurado
+    let transportHint = 'none';
+    if (gmailReady) transportHint = 'gmail_api';
+    else if (config.host && config.auth?.user && config.auth?.pass) transportHint = 'smtp';
+
     let status = 'inactive';
     let lastChecked = null;
 
-    if (enabled && config.host && config.auth.user && config.auth.pass) {
+    if (enabled && gmailReady) {
+      status = 'active';
+      lastChecked = new Date();
+    } else if (enabled && config.host && config.auth.user && config.auth.pass) {
       try {
         const testResult = await emailService.testConnection({
           host: config.host,
@@ -69,7 +82,9 @@ router.get('/status', requirePermission, async (req, res) => {
     const response = {
       enabled,
       status,
-      lastChecked
+      lastChecked,
+      gmailReady,
+      transportHint
     };
 
     global.emitTraffic('Email', 'completed', 'Status obtido com sucesso');
@@ -94,14 +109,15 @@ router.get('/config', requirePermission, async (req, res) => {
     global.emitTraffic('Email', 'received', 'GET /api/email/config');
     global.emitLog('info', 'GET /api/email/config - Obtendo configurações');
 
-    const config = emailService.getConfig();
+    const cfg = emailService.getConfig();
 
+    const pass = cfg.auth?.pass || cfg.password;
     const response = {
-      host: config.host || '',
-      port: config.port || 587,
-      user: config.auth.user || '',
-      password: config.password ? maskPassword(config.password) : '',
-      from: config.from || ''
+      host: cfg.host || '',
+      port: cfg.port || 587,
+      user: cfg.auth?.user || '',
+      password: pass ? maskPassword(pass) : '',
+      from: cfg.from || ''
     };
 
     global.emitTraffic('Email', 'completed', 'Configurações obtidas');
@@ -140,7 +156,7 @@ router.post('/test', requirePermission, async (req, res) => {
     // Testar conexão
     const result = await emailService.testConnection({
       host,
-      port: parseInt(port),
+      port: parseInt(port, 10),
       secure: port === 465,
       user,
       password
@@ -168,7 +184,6 @@ router.post('/test', requirePermission, async (req, res) => {
 /**
  * PUT /api/email/config
  * Atualizar configurações SMTP
- * Em produção, isso deve salvar no Secret Manager do GCP
  */
 router.put('/config', requirePermission, async (req, res) => {
   try {
@@ -185,8 +200,6 @@ router.put('/config', requirePermission, async (req, res) => {
       });
     }
 
-    // Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(from)) {
       return res.status(400).json({
         success: false,
@@ -195,17 +208,19 @@ router.put('/config', requirePermission, async (req, res) => {
     }
 
     // Atualizar configuração no serviço
-    emailService.updateConfig({
-      host,
-      port: parseInt(port),
-      secure: port === 465,
-      auth: {
-        user,
-        pass: password
-      }
-    }, from);
+    emailService.updateConfig(
+      {
+        host,
+        port: parseInt(port, 10),
+        secure: port === 465,
+        auth: {
+          user,
+          pass: password
+        }
+      },
+      from
+    );
 
-    // Reinicializar transporter
     const initialized = await emailService.initializeTransporter();
 
     if (!initialized) {
@@ -215,7 +230,8 @@ router.put('/config', requirePermission, async (req, res) => {
       });
     }
 
-    // Retornar configurações atualizadas (senha mascarada)
+    emailService.setEnabled(true);
+
     const updatedConfig = emailService.getConfig();
     const response = {
       host: updatedConfig.host,
@@ -243,7 +259,7 @@ router.put('/config', requirePermission, async (req, res) => {
 
 /**
  * POST /api/email/toggle
- * Ativar ou desativar serviço de email
+ * Ativar ou desativar serviço de email (SMTP inicializado OU Gmail Mongo pronto)
  */
 router.post('/toggle', requirePermission, async (req, res) => {
   try {
@@ -259,24 +275,26 @@ router.post('/toggle', requirePermission, async (req, res) => {
       });
     }
 
-    // Verificar se há configuração antes de ativar
     if (enabled) {
-      const config = emailService.getConfig();
-      if (!config.host || !config.auth.user || !config.auth.pass) {
-        return res.status(400).json({
-          success: false,
-          error: 'Não é possível ativar o serviço: configuração SMTP incompleta'
-        });
-      }
-
-      // Tentar inicializar se não estiver pronto
-      if (!emailService.isReady()) {
-        const initialized = await emailService.initializeTransporter();
-        if (!initialized) {
-          return res.status(500).json({
+      const gmailReady =
+        typeof emailService.hasGmailMongoReady === 'function' && emailService.hasGmailMongoReady();
+      if (!gmailReady) {
+        const config = emailService.getConfig();
+        if (!config.host || !config.auth.user || !config.auth.pass) {
+          return res.status(400).json({
             success: false,
-            error: 'Não é possível ativar o serviço: erro ao conectar com SMTP'
+            error: 'Não é possível ativar: SMTP incompleto e Gmail API (Mongo) não configurado'
           });
+        }
+
+        if (!emailService.isReady()) {
+          const initialized = await emailService.initializeTransporter();
+          if (!initialized) {
+            return res.status(500).json({
+              success: false,
+              error: 'Não é possível ativar o serviço: erro ao conectar com SMTP'
+            });
+          }
         }
       }
     }
@@ -301,6 +319,138 @@ router.post('/toggle', requirePermission, async (req, res) => {
       error: 'Erro ao alterar estado do serviço de email',
       message: error.message
     });
+  }
+});
+
+/**
+ * GET /api/email/gmail-config
+ * Metadados do singleton Mongo console_config.email_config (_id email_tk_notifications) — sem chave privada
+ */
+router.get('/gmail-config', requirePermission, async (req, res) => {
+  try {
+    global.emitTraffic('Email', 'received', 'GET /api/email/gmail-config');
+    await emailService.reloadMongoTransportFromDb();
+    const doc = await EmailTransportConfig.findSingletonLean();
+    const snap = emailService.getMongoTransportSnapshotSanitized();
+
+    const payload = {
+      documentId: EmailTransportConfig.SINGLETON_ID,
+      transportMode: (doc && doc.transportMode) || 'gmail_api',
+      defaultFromEmail: (doc && doc.defaultFromEmail) || (snap && snap.defaultFromEmail) || '',
+      delegatedUserEmail: (doc && doc.delegatedUserEmail) || (snap && snap.delegatedUserEmail) || '',
+      hasServiceAccount: !!(snap && snap.hasServiceAccount),
+      serviceAccountClientEmail: (snap && snap.serviceAccountClientEmail) || '',
+      collectionName: EmailTransportConfig.COLLECTION_NAME
+    };
+
+    global.emitJson({ ...payload });
+    res.json(payload);
+  } catch (error) {
+    global.emitLog('error', `GET /api/email/gmail-config - ${error.message}`);
+    res.status(500).json({ error: 'Erro ao obter configuração Gmail', message: error.message });
+  }
+});
+
+/**
+ * PUT /api/email/gmail-config
+ */
+router.put('/gmail-config', requirePermission, async (req, res) => {
+  try {
+    global.emitTraffic('Email', 'received', 'PUT /api/email/gmail-config');
+    const {
+      transportMode,
+      defaultFromEmail,
+      delegatedUserEmail,
+      serviceAccountJson: bodySa
+    } = req.body || {};
+
+    if (transportMode && !['gmail_api', 'smtp'].includes(transportMode)) {
+      return res.status(400).json({ success: false, error: 'transportMode deve ser gmail_api ou smtp' });
+    }
+
+    const prev = (await EmailTransportConfig.findSingletonLean()) || {};
+
+    const nextMode = transportMode || prev.transportMode || 'gmail_api';
+    let nextDefault =
+      typeof defaultFromEmail === 'string'
+        ? defaultFromEmail.trim().toLowerCase()
+        : prev.defaultFromEmail || '';
+    let nextDelegated =
+      typeof delegatedUserEmail === 'string'
+        ? delegatedUserEmail.trim().toLowerCase()
+        : prev.delegatedUserEmail || '';
+
+    let serviceAccountJson = prev.serviceAccountJson || null;
+    if (bodySa !== undefined && bodySa !== null && String(bodySa).trim() !== '') {
+      try {
+        serviceAccountJson = typeof bodySa === 'string' ? JSON.parse(bodySa) : bodySa;
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ success: false, error: 'JSON da conta de serviço inválido', message: e.message });
+      }
+    }
+
+    if (nextMode === 'gmail_api') {
+      if (!nextDefault || !emailRegex.test(nextDefault)) {
+        return res.status(400).json({ success: false, error: 'Informe um e-mail remetente (From) válido' });
+      }
+      const del = nextDelegated || nextDefault;
+      if (!emailRegex.test(del)) {
+        return res.status(400).json({ success: false, error: 'E-mail delegado inválido' });
+      }
+      nextDelegated = del;
+      if (!serviceAccountJson || !serviceAccountJson.private_key || !serviceAccountJson.client_email) {
+        return res.status(400).json({
+          success: false,
+          error:
+            'Modo gmail_api exige JSON da conta de serviço (client_email/private_key) ou já salvo no mesmo documento'
+        });
+      }
+    }
+
+    await EmailTransportConfig.upsertSingleton({
+      transportMode: nextMode,
+      defaultFromEmail: nextMode === 'smtp' ? nextDefault || '' : nextDefault,
+      delegatedUserEmail: nextMode === 'smtp' ? '' : nextDelegated,
+      serviceAccountJson: nextMode === 'smtp' ? null : serviceAccountJson
+    });
+    emailService.applyMongoTransport(await EmailTransportConfig.findSingletonLean());
+    if (nextMode === 'gmail_api') {
+      emailService.setEnabled(true);
+    }
+    global.emitLog('success', 'PUT /api/email/gmail-config - OK');
+
+    const snap = emailService.getMongoTransportSnapshotSanitized();
+    res.json({
+      success: true,
+      documentId: EmailTransportConfig.SINGLETON_ID,
+      transportMode: nextMode,
+      defaultFromEmail: nextDefault,
+      delegatedUserEmail: nextDelegated || nextDefault,
+      hasServiceAccount: !!(snap && snap.hasServiceAccount),
+      serviceAccountClientEmail: (snap && snap.serviceAccountClientEmail) || ''
+    });
+  } catch (error) {
+    global.emitLog('error', `PUT /api/email/gmail-config - ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/email/gmail-test
+ */
+router.post('/gmail-test', requirePermission, async (req, res) => {
+  try {
+    global.emitTraffic('Email', 'received', 'POST /api/email/gmail-test');
+    const { to } = req.body || {};
+    await emailService.reloadMongoTransportFromDb();
+    await emailService.sendGmailTestMessage({ to });
+    global.emitTraffic('Email', 'completed', 'POST /api/email/gmail-test OK');
+    res.json({ success: true, message: 'E-mail de teste enviado (Gmail API)' });
+  } catch (error) {
+    global.emitLog('error', `POST /api/email/gmail-test - ${error.message}`);
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 

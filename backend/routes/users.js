@@ -1,4 +1,5 @@
-// VERSION: v1.8.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.9.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.9.0 - Default _userTickets.gestaoQa ao criar usuário
 const express = require('express');
 const router = express.Router();
 const Users = require('../models/Users');
@@ -82,6 +83,7 @@ router.post('/', async (req, res) => {
         funcionalidades: false,
         recursos: false,
         gestao: false,
+        gestaoQa: false,
         rhFin: false,
         facilities: false
       },

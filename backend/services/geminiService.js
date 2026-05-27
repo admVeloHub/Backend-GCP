@@ -1,4 +1,6 @@
-// VERSION: v1.2.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.4.0 | DATE: 2026-04-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.4.0 - Modelo padrão gemini-2.5-flash (API Google AI Studio: gemini-2.0-flash indisponível a novos users); GEMINI_MODEL_ID opcional na env
+// CHANGELOG: v1.3.0 - generateQaFeedbackEmail: corpo de e-mail QA (Gemini 2.0 flash, saída só texto)
 let GoogleGenerativeAI = null;
 try {
   GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
@@ -9,6 +11,12 @@ try {
 
 // Configurar API Key do Gemini
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+/** Lista de modelos: https://ai.google.dev/gemini-api/docs/models — gemini-2.0-* deixou de estar disponível a novos utilizadores na AI Studio */
+const GEMINI_MODEL_ID =
+  typeof process.env.GEMINI_MODEL_ID === 'string' && process.env.GEMINI_MODEL_ID.trim()
+    ? process.env.GEMINI_MODEL_ID.trim()
+    : 'gemini-2.5-flash';
 
 let genAI = null;
 
@@ -65,8 +73,8 @@ const analyzeSentimentAndReason = async (text) => {
       };
     }
 
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
+    const model = ai.getGenerativeModel({ model: GEMINI_MODEL_ID });
+
     const prompt = `Analise o seguinte texto de atendimento de rede social e retorne APENAS um JSON válido com:
 1. "sentiment": (Positivo, Neutro ou Negativo)
 2. "reason": (Comercial, Suporte, Bug ou Elogio)
@@ -162,8 +170,8 @@ const generateExecutiveReport = async (data) => {
       };
     }
 
-    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
+    const model = ai.getGenerativeModel({ model: GEMINI_MODEL_ID });
+
     // Preparar dados para o prompt
     let dataSummary = '';
     if (typeof data === 'string') {
@@ -213,8 +221,42 @@ Seja objetivo, profissional e forneça insights acionáveis.`;
   }
 };
 
+/**
+ * Gera texto do e-mail de feedback QA (corpo único, sem preâmbulo do modelo).
+ * @param {string} fullPrompt - Instruções + dados já interpolados
+ * @returns {Promise<{ success: boolean, feedbackGerado?: string, error?: string }>}
+ */
+const generateQaFeedbackEmail = async (fullPrompt) => {
+  try {
+    if (!fullPrompt || String(fullPrompt).trim().length === 0) {
+      return { success: false, error: 'Prompt vazio' };
+    }
+    if (!GoogleGenerativeAI) {
+      return { success: false, error: 'Módulo @google/generative-ai não disponível' };
+    }
+    const ai = configureGemini();
+    if (!ai) {
+      return {
+        success: false,
+        error: 'Gemini AI não configurado. Verifique GEMINI_API_KEY'
+      };
+    }
+    const model = ai.getGenerativeModel({ model: GEMINI_MODEL_ID });
+    const result = await model.generateContent(String(fullPrompt));
+    const text = (result.response && result.response.text()) ? result.response.text().trim() : '';
+    if (!text) {
+      return { success: false, error: 'Resposta vazia da IA' };
+    }
+    return { success: true, feedbackGerado: text };
+  } catch (error) {
+    console.error('generateQaFeedbackEmail:', error);
+    return { success: false, error: error.message || 'Erro ao gerar e-mail de feedback' };
+  }
+};
+
 module.exports = {
   configureGemini,
   analyzeSentimentAndReason,
-  generateExecutiveReport
+  generateExecutiveReport,
+  generateQaFeedbackEmail
 };

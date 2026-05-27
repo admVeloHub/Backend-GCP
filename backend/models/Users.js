@@ -1,4 +1,5 @@
-// VERSION: v1.15.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.16.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.16.0 - _userTickets.gestaoQa (chamados Gestão direcionados a QA)
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
 
@@ -63,6 +64,7 @@ const userSchema = new mongoose.Schema({
     funcionalidades: { type: Boolean, default: false },
     recursos: { type: Boolean, default: false },
     gestao: { type: Boolean, default: false },
+    gestaoQa: { type: Boolean, default: false },
     rhFin: { type: Boolean, default: false },
     facilities: { type: Boolean, default: false }
   },

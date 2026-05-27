@@ -1,4 +1,6 @@
-// VERSION: v1.6.0 | DATE: 2026-04-16 | AUTHOR: VeloHub Development Team
+// VERSION: v1.6.2 | DATE: 2026-04-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.6.2 - POST academy-trophy: normalizar folder (req.body multipart) antes do upload ao GCS
+// CHANGELOG: v1.6.1 - Mensagem POST academy-trophy: folder qa_trophies documentado (validação em gcs.js)
 // CHANGELOG: v1.6.0 - GET /academy-trophy-temas-list (imagens em icones_conquistas/temas para reutilizar Bronze/Prata)
 // CHANGELOG: v1.5.1 - POST academy-trophy: folder icones_conquistas/modulos|temas (sem duplicar nome do bucket)
 // CHANGELOG: v1.5.0 - GET /academy-trophy-media?filename= (stream; bucket privado — pré-visualização Console)
@@ -10,6 +12,7 @@ const multer = require('multer');
 const {
   uploadImage,
   uploadAcademyTrophyImage,
+  normalizeAcademyTrophyUploadFolder,
   listAcademyTrophyTemasObjects,
   isAcademyTrophyObjectPath,
   generateImageUploadSignedUrl,
@@ -162,17 +165,17 @@ router.post('/academy-trophy', upload.single('image'), async (req, res) => {
       });
     }
 
-    const { folder } = req.body;
-    if (!folder || typeof folder !== 'string') {
+    const folderNormalized = normalizeAcademyTrophyUploadFolder(req.body.folder);
+    if (!folderNormalized) {
       return res.status(400).json({
         success: false,
-        error: 'Campo folder é obrigatório (icones_conquistas/modulos ou icones_conquistas/temas)'
+        error: 'Campo folder é obrigatório (icones_conquistas/modulos, icones_conquistas/temas ou qa_trophies)'
       });
     }
 
     const { buffer, originalname, mimetype } = req.file;
 
-    const result = await uploadAcademyTrophyImage(buffer, originalname, mimetype, folder.trim());
+    const result = await uploadAcademyTrophyImage(buffer, originalname, mimetype, folderNormalized);
 
     res.json({
       success: true,
