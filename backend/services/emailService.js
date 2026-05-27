@@ -1,4 +1,5 @@
-// VERSION: v2.0.8 | DATE: 2026-05-27 | AUTHOR: VeloHub Development Team
+// VERSION: v2.0.9 | DATE: 2026-05-27 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.0.9 - sendDenunciaVelohubEmail: assunto e corpo conforme canal Velohub (identificado / anônimo)
 // CHANGELOG: v2.0.8 - sendDenunciaVelohubEmail (canal denúncias VeloHub → DENUNCIA_EMAIL_TO)
 // CHANGELOG: v2.0.7 - Template novas mensagens: texto “interagiu novamente… Acesse o console para responder.”
 // CHANGELOG: v2.0.6 - Mensagem do solicitante: assunto e HTML distintos do e-mail de “novo ticket na categoria” — “Seu ticket nº … tem novas mensagens” + texto de novo conteúdo do solicitante no Apoio
@@ -505,37 +506,48 @@ function escapeHtmlForEmail(text) {
     .replace(/'/g, '&#39;');
 }
 
+function formatDenunciaDateTime(date = new Date()) {
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
 /**
  * E-mail do canal de denúncias (VeloHub → destinatário configurado).
  * @param {{ to: string, modoComunicacao: string, mensagem: string, reportedBy?: { name: string, email: string } | null }} params
  */
 async function sendDenunciaVelohubEmail({ to, modoComunicacao, mensagem, reportedBy }) {
   const modo = modoComunicacao === 'identificado' ? 'identificado' : 'anonimo';
-  const subject =
-    modo === 'identificado'
-      ? '[VeloHub] Denúncia — Identificada'
-      : '[VeloHub] Denúncia — Anônima';
+  const subject = 'Velohub - Canal de denúncias';
 
   const safeMsg = escapeHtmlForEmail(mensagem).replace(/\n/g, '<br/>');
-  const when = new Date().toISOString();
+  const when = formatDenunciaDateTime(new Date());
 
-  let identityBlock = '<p><strong>Remetente:</strong> Anônimo</p>';
+  let html;
   if (modo === 'identificado' && reportedBy) {
-    identityBlock =
+    html =
+      `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;">` +
       `<p><strong>Nome:</strong> ${escapeHtmlForEmail(reportedBy.name)}</p>` +
-      `<p><strong>E-mail:</strong> ${escapeHtmlForEmail(reportedBy.email)}</p>`;
+      `<p><strong>Email:</strong> ${escapeHtmlForEmail(reportedBy.email)}</p>` +
+      `<p><strong>Data/hora do envio:</strong> ${escapeHtmlForEmail(when)}</p>` +
+      `<p><strong>Manifestação:</strong></p>` +
+      `<p style="white-space:pre-wrap;">${safeMsg}</p>` +
+      `</div>`;
+  } else {
+    html =
+      `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;">` +
+      `<p><strong>Denúncia Anônima</strong></p>` +
+      `<p><strong>Data/hora:</strong> ${escapeHtmlForEmail(when)}</p>` +
+      `<p><strong>Manifestação:</strong></p>` +
+      `<p style="white-space:pre-wrap;">${safeMsg}</p>` +
+      `</div>`;
   }
-
-  const html =
-    `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;">` +
-    `<h2 style="color:#006ab9;">Canal de denúncias — VeloHub</h2>` +
-    `<p><strong>Modo:</strong> ${modo === 'identificado' ? 'Identificado' : 'Anônimo'}</p>` +
-    identityBlock +
-    `<p><strong>Recebido em:</strong> ${when}</p>` +
-    `<hr style="border:none;border-top:1px solid #ccc;margin:16px 0;"/>` +
-    `<p><strong>Manifestação:</strong></p>` +
-    `<p style="white-space:pre-wrap;">${safeMsg}</p>` +
-    `</div>`;
 
   await dispatchOutgoingMail({ to: String(to).trim(), subject, html });
 }
