@@ -1,4 +1,5 @@
-// VERSION: v1.18.2 | DATE: 2026-04-27 | AUTHOR: VeloHub Development Team
+// VERSION: v1.18.3 | DATE: 2026-06-01 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.18.3 - home destaques: prefixo GCS img_destaques/ (bucket já é mediabank_velohub; sem duplicar nome)
 // CHANGELOG: v1.18.2 - parseGcpServiceAccountKey: lixo antes do primeiro "{"; mensagem específica para "{' (chaves com aspas simples)
 // CHANGELOG: v1.18.1 - uploadAcademyTrophyImage: normalizar folder (multipart/alias) para aceitar qa_trophies de forma robusta
 // CHANGELOG: v1.18.0 - qa_trophies: pasta permitida no upload de troféu + isAcademyTrophyObjectPath (proxy GET academy-trophy-media)
@@ -1070,6 +1071,71 @@ const listAcademyTrophyTemasObjects = async () => {
   return items;
 };
 
+const HOME_DESTAQUES_GCS_PREFIX = 'img_destaques/';
+/** Objetos enviados antes da correção (pasta duplicada no key) */
+const HOME_DESTAQUES_LEGACY_GCS_PREFIX = 'mediabank_velohub/img_destaques/';
+const HOME_DESTAQUES_IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
+const HOME_DESTAQUES_UPLOAD_FOLDER = 'img_destaques';
+
+function stripImagesBucketNameFromObjectKey(objectName) {
+  if (!objectName || !GCS_BUCKET_NAME_IMAGES) return objectName;
+  const bucketPrefix = `${GCS_BUCKET_NAME_IMAGES}/`;
+  return objectName.startsWith(bucketPrefix) ? objectName.slice(bucketPrefix.length) : objectName;
+}
+
+/** Caminho lógico usado pelo VeloHub (/api/images/...) e hub_banner.name */
+function toHomeDestaqueLogicalPath(objectName) {
+  const key = stripImagesBucketNameFromObjectKey(objectName);
+  if (key.startsWith('img_destaques/')) {
+    return `mediabank_velohub/${key}`;
+  }
+  return key;
+}
+
+function buildImagesBucketPublicUrl(objectName) {
+  const key = stripImagesBucketNameFromObjectKey(objectName);
+  const enc = key.split('/').map(encodeURIComponent).join('/');
+  return `https://storage.googleapis.com/${GCS_BUCKET_NAME_IMAGES}/${enc}`;
+}
+
+const listHomeDestaquesObjects = async () => {
+  if (!GCS_BUCKET_NAME_IMAGES) {
+    throw new Error('GCS_BUCKET_NAME2 não está configurado.');
+  }
+  const bucket = getBucketImages();
+  if (!bucket) {
+    throw new Error('Bucket de imagens (GCS_BUCKET_NAME2) não está disponível.');
+  }
+
+  const seen = new Set();
+  const items = [];
+  const prefixes = [HOME_DESTAQUES_GCS_PREFIX, HOME_DESTAQUES_LEGACY_GCS_PREFIX];
+
+  for (const prefix of prefixes) {
+    const [files] = await bucket.getFiles({ prefix, maxResults: 1000 });
+    for (const f of files) {
+      const name = f.name;
+      if (!name || name.endsWith('/')) continue;
+      if (!HOME_DESTAQUES_IMAGE_RE.test(name)) continue;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      items.push({
+        fileName: name,
+        name: name.split('/').pop(),
+        logicalPath: toHomeDestaqueLogicalPath(name),
+        url: buildImagesBucketPublicUrl(name),
+      });
+    }
+  }
+
+  items.sort((a, b) => a.fileName.localeCompare(b.fileName, 'pt-BR'));
+  return items;
+};
+
+const uploadHomeDestaqueImage = async (fileBuffer, fileName, mimeType) => {
+  return uploadImage(fileBuffer, fileName, mimeType, HOME_DESTAQUES_UPLOAD_FOLDER);
+};
+
 module.exports = {
   initializeGCS,
   getBucket,
@@ -1090,6 +1156,8 @@ module.exports = {
   uploadAcademyTrophyImage,
   normalizeAcademyTrophyUploadFolder,
   listAcademyTrophyTemasObjects,
+  listHomeDestaquesObjects,
+  uploadHomeDestaqueImage,
   isAcademyTrophyObjectPath,
   publishAudioToPubSub,
   ALLOWED_FILE_TYPES,

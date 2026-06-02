@@ -1,5 +1,10 @@
-// VERSION: v5.25.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// VERSION: v5.27.3 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
 // CHANGELOG:
+// v5.27.3 - DELETE /funcoes/:id: checagem em uso via driver nativo ($or atuacao.funcao + legado string; evita ObjectParameterError)
+// v5.27.2 - DELETE/PUT /funcoes/:id: catch usa req.params.id (evita ReferenceError e timeout 30s no cliente)
+// v5.27.1 - DELETE /funcoes/:id: ensure conexão funcionarios, findOne+maxTimeMS (evita timeout 30s)
+// v5.27.0 - funcionarios.atuacao: [{ funcao: String }] nomes por extenso; normalização POST/PUT/GET
+// v5.26.0 - qualidade_funcionarios: normalização trim do campo departamento no POST/PUT
 // v5.25.0 - CRUD GET/POST/PUT/DELETE /qa-resgate-items (coleção qa_resgate_items, console_analises)
 // v5.24.0 - Sync Qualidade→config: default _userTickets.gestaoQa ao criar usuário
 // v5.23.0 - qualidade_ticket_avaliacoes: critérios persistidos com nomes PascalCase (FONTE LISTA_SCHEMAS.rb); body aceita sinónimos pos*/neg* do front; modelo QualidadeTicketAvaliacao.js; calcularPontuacaoTicket ajustado
@@ -37,6 +42,23 @@ const QualidadeAtuacoes = require('../models/QualidadeAtuacoes');
 const QualidadeFuncoes = require('../models/QualidadeFuncoes');
 const QaResgateItem = require('../models/QaResgateItem');
 const Users = require('../models/Users');
+const {
+  normalizarModulosVelohub,
+  normalizarAcessosPlataforma,
+} = require('../utils/modulosVelohub');
+const { connectToDatabase } = require('../config/database');
+const { ensureFuncionariosConnectionReady, getFuncionariosConnection } = require('../config/funcionariosConnection');
+const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
+const { normalizarAtuacaoParaObjetos } = require('../utils/normalizarAtuacaoFuncionario');
+
+const formatFuncaoParaResposta = (doc) => {
+  const o = doc && doc.toObject ? doc.toObject() : doc;
+  if (!o) return o;
+  return {
+    ...o,
+    modulosVelohub: normalizarModulosVelohub(o.modulosVelohub),
+  };
+};
 
 const parseQaResgateXpPrice = (raw) => {
   const n = Number(raw);
@@ -713,63 +735,24 @@ const validateAvaliacaoGPT = (req, res, next) => {
   next();
 };
 
-// Função helper para normalizar formato de acessos ao retornar dados
+// Credenciais de plataforma apenas (módulos VeloHub → qualidade_funcoes.modulosVelohub)
 const normalizarAcessosParaResposta = (acessos) => {
-  // Se for null ou undefined, retornar objeto vazio
-  if (!acessos) {
-    return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
-  }
-  
-  // Se já for objeto booleano, garantir que tenha todas as chaves
-  if (typeof acessos === 'object' && !Array.isArray(acessos)) {
-    return {
-      Velohub: acessos.Velohub === true,
-      Console: acessos.Console === true,
-      Academy: acessos.Academy === true,
-      Desk: acessos.Desk === true,
-      Ouvidoria: acessos.Ouvidoria === true,
-      Sociais: acessos.Sociais === true,
-      realTime: acessos.realTime === true,
-      apoioN1: acessos.apoioN1 === true,
-      ChavePix: acessos.ChavePix === true
-    };
-  }
-  
-  // Se for array (formato antigo), converter para objeto booleano
   if (Array.isArray(acessos)) {
-    const novoAcessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
-    acessos.forEach(acesso => {
-      if (acesso && acesso.sistema) {
-        const sistema = acesso.sistema.toLowerCase();
-        if (sistema === 'velohub') {
-          novoAcessos.Velohub = true;
-        } else if (sistema === 'console') {
-          novoAcessos.Console = true;
-        } else if (sistema === 'academy') {
-          novoAcessos.Academy = true;
-        } else if (sistema === 'desk') {
-          novoAcessos.Desk = true;
-        } else if (sistema === 'ouvidoria') {
-          novoAcessos.Ouvidoria = true;
-        } else if (sistema === 'sociais') {
-          novoAcessos.Sociais = true;
-        } else if (sistema === 'realtime' || sistema === 'tempo-real' || sistema === 'tempo_real') {
-          novoAcessos.realTime = true;
-        }
-        const sisSlug = String(acesso.sistema).toLowerCase().replace(/[\s_-]/g, '');
-        if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
-          novoAcessos.apoioN1 = true;
-        }
-        if (acesso.sistema === 'ChavePix' || sisSlug === 'chavepix') {
-          novoAcessos.ChavePix = true;
-        }
+    const novoAcessos = {};
+    acessos.forEach((acesso) => {
+      if (!acesso?.sistema) return;
+      const sistema = String(acesso.sistema).toLowerCase();
+      if (sistema === 'velohub') novoAcessos.Velohub = true;
+      else if (sistema === 'console') novoAcessos.Console = true;
+      else if (sistema === 'academy') novoAcessos.Academy = true;
+      else if (sistema === 'desk') novoAcessos.Desk = true;
+      else if (sistema === 'realtime' || sistema === 'tempo-real' || sistema === 'tempo_real') {
+        novoAcessos.realTime = true;
       }
     });
-    return novoAcessos;
+    return normalizarAcessosPlataforma(novoAcessos);
   }
-  
-  // Fallback: objeto vazio
-  return { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
+  return normalizarAcessosPlataforma(acessos);
 };
 
 // GET /api/qualidade/funcionarios - Listar todos os funcionários
@@ -779,15 +762,18 @@ router.get('/funcionarios', async (req, res) => {
     
     const funcionarios = await QualidadeFuncionario.find({})
       .sort({ createdAt: -1 });
-    
-    // Normalizar formato de acessos para cada funcionário
-    const funcionariosNormalizados = funcionarios.map(func => {
-      const funcionarioObj = func.toObject ? func.toObject() : func;
-      return {
-        ...funcionarioObj,
-        acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
-      };
-    });
+
+    await connectToDatabase();
+    const funcionariosNormalizados = await Promise.all(
+      funcionarios.map(async (func) => {
+        const funcionarioObj = func.toObject ? func.toObject() : func;
+        return {
+          ...funcionarioObj,
+          acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
+          atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
+        };
+      })
+    );
     
     res.json({
       success: true,
@@ -815,14 +801,17 @@ router.get('/funcionarios/ativos', async (req, res) => {
       afastado: false
     }).sort({ createdAt: -1 });
     
-    // Normalizar formato de acessos para cada funcionário
-    const funcionariosNormalizados = funcionariosAtivos.map(func => {
-      const funcionarioObj = func.toObject ? func.toObject() : func;
-      return {
-        ...funcionarioObj,
-        acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
-      };
-    });
+    await connectToDatabase();
+    const funcionariosNormalizados = await Promise.all(
+      funcionariosAtivos.map(async (func) => {
+        const funcionarioObj = func.toObject ? func.toObject() : func;
+        return {
+          ...funcionarioObj,
+          acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
+          atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
+        };
+      })
+    );
     
     res.json({
       success: true,
@@ -853,11 +842,12 @@ router.get('/funcionarios/:id', async (req, res) => {
       });
     }
     
-    // Normalizar formato de acessos
+    await connectToDatabase();
     const funcionarioObj = funcionario.toObject ? funcionario.toObject() : funcionario;
     const funcionarioNormalizado = {
       ...funcionarioObj,
-      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos)
+      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
+      atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
     };
     
     res.json({
@@ -928,77 +918,25 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
     if (funcionarioData.profile_pic) {
       funcionarioData.profile_pic = funcionarioData.profile_pic.trim();
     }
-    
-    // Normalizar formato de acessos (converter array para objeto se necessário)
-    if (funcionarioData.acessos) {
-      // Se está no formato antigo (array), converter para objeto booleano
-      if (Array.isArray(funcionarioData.acessos)) {
-        const novoAcessos = {};
-        funcionarioData.acessos.forEach(acesso => {
-          if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
-            novoAcessos.Velohub = true;
-          }
-          if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
-            novoAcessos.Console = true;
-          }
-          if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
-            novoAcessos.Academy = true;
-          }
-          if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
-            novoAcessos.Desk = true;
-          }
-          if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
-            novoAcessos.Ouvidoria = true;
-          }
-          if (acesso.sistema === 'Sociais' || acesso.sistema === 'sociais') {
-            novoAcessos.Sociais = true;
-          }
-          if (acesso.sistema === 'realTime' || acesso.sistema === 'realtime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
-            novoAcessos.realTime = true;
-          }
-          const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
-          if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
-            novoAcessos.apoioN1 = true;
-          }
-          if (acesso.sistema === 'ChavePix' || sisSlug === 'chavepix') {
-            novoAcessos.ChavePix = true;
-          }
+
+    if (funcionarioData.departamento !== undefined && funcionarioData.departamento !== null) {
+      funcionarioData.departamento = String(funcionarioData.departamento).trim();
+    }
+
+    await connectToDatabase();
+    if (funcionarioData.atuacao !== undefined) {
+      funcionarioData.atuacao = await normalizarAtuacaoParaObjetos(funcionarioData.atuacao);
+      if (!funcionarioData.atuacao.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selecione ao menos uma função (atuação) válida',
         });
-        // Sempre retornar objeto booleano completo
-        funcionarioData.acessos = {
-          Velohub: novoAcessos.Velohub === true,
-          Console: novoAcessos.Console === true,
-          Academy: novoAcessos.Academy === true,
-          Desk: novoAcessos.Desk === true,
-          Ouvidoria: novoAcessos.Ouvidoria === true,
-          Sociais: novoAcessos.Sociais === true,
-          realTime: novoAcessos.realTime === true,
-          apoioN1: novoAcessos.apoioN1 === true,
-          ChavePix: novoAcessos.ChavePix === true
-        };
       }
-      // Se está no formato novo (objeto), garantir que tenha todas as chaves
-      else if (typeof funcionarioData.acessos === 'object') {
-        funcionarioData.acessos = {
-          Velohub: funcionarioData.acessos.Velohub === true,
-          Console: funcionarioData.acessos.Console === true,
-          Academy: funcionarioData.acessos.Academy === true,
-          Desk: funcionarioData.acessos.Desk === true,
-          Ouvidoria: funcionarioData.acessos.Ouvidoria === true,
-          Sociais: funcionarioData.acessos.Sociais === true,
-          realTime: funcionarioData.acessos.realTime === true,
-          apoioN1: funcionarioData.acessos.apoioN1 === true,
-          ChavePix: funcionarioData.acessos.ChavePix === true
-        };
-      }
-    } else {
-      // Se acessos não foi fornecido, definir como objeto com todos false
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
     }
     
-    // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
+    funcionarioData.acessos = normalizarAcessosParaResposta(funcionarioData.acessos);
     if (funcionarioData.desligado || funcionarioData.afastado) {
-      funcionarioData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
+      funcionarioData.acessos = normalizarAcessosPlataforma(null);
     }
     
     // Gerar hash de senha padrão se não fornecido (primeiroNome.ultimoNomeCPF)
@@ -1254,78 +1192,27 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
         updateData.profile_pic = updateData.profile_pic.trim();
       }
     }
-    
-    // Normalizar formato de acessos (converter array para objeto se necessário)
-    if (updateData.acessos !== undefined) {
-      if (updateData.acessos === null || updateData.acessos === '') {
-        // Se explicitamente null ou vazio, converter para objeto com todos false
-        updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
-      }
-      // Se está no formato antigo (array), converter para objeto booleano
-      else if (Array.isArray(updateData.acessos)) {
-        const novoAcessos = {};
-        updateData.acessos.forEach(acesso => {
-          if (acesso.sistema === 'Velohub' || acesso.sistema === 'velohub') {
-            novoAcessos.Velohub = true;
-          }
-          if (acesso.sistema === 'Console' || acesso.sistema === 'console') {
-            novoAcessos.Console = true;
-          }
-          if (acesso.sistema === 'Academy' || acesso.sistema === 'academy') {
-            novoAcessos.Academy = true;
-          }
-          if (acesso.sistema === 'Desk' || acesso.sistema === 'desk') {
-            novoAcessos.Desk = true;
-          }
-          if (acesso.sistema === 'Ouvidoria' || acesso.sistema === 'ouvidoria') {
-            novoAcessos.Ouvidoria = true;
-          }
-          if (acesso.sistema === 'Sociais' || acesso.sistema === 'sociais') {
-            novoAcessos.Sociais = true;
-          }
-          if (acesso.sistema === 'realTime' || acesso.sistema === 'realtime' || acesso.sistema === 'tempo-real' || acesso.sistema === 'tempo_real') {
-            novoAcessos.realTime = true;
-          }
-          const sisSlug = String(acesso.sistema || '').toLowerCase().replace(/[\s_-]/g, '');
-          if (acesso.sistema === 'apoioN1' || sisSlug === 'apoion1') {
-            novoAcessos.apoioN1 = true;
-          }
-          if (acesso.sistema === 'ChavePix' || sisSlug === 'chavepix') {
-            novoAcessos.ChavePix = true;
-          }
+
+    if (updateData.departamento !== undefined) {
+      updateData.departamento = updateData.departamento == null ? '' : String(updateData.departamento).trim();
+    }
+
+    if (updateData.atuacao !== undefined) {
+      await connectToDatabase();
+      updateData.atuacao = await normalizarAtuacaoParaObjetos(updateData.atuacao);
+      if (!updateData.atuacao.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selecione ao menos uma função (atuação) válida',
         });
-        // Sempre retornar objeto booleano completo
-        updateData.acessos = {
-          Velohub: novoAcessos.Velohub === true,
-          Console: novoAcessos.Console === true,
-          Academy: novoAcessos.Academy === true,
-          Desk: novoAcessos.Desk === true,
-          Ouvidoria: novoAcessos.Ouvidoria === true,
-          Sociais: novoAcessos.Sociais === true,
-          realTime: novoAcessos.realTime === true,
-          apoioN1: novoAcessos.apoioN1 === true,
-          ChavePix: novoAcessos.ChavePix === true
-        };
-      }
-      // Se está no formato novo (objeto), garantir que tenha todas as chaves
-      else if (typeof updateData.acessos === 'object') {
-        updateData.acessos = {
-          Velohub: updateData.acessos.Velohub === true,
-          Console: updateData.acessos.Console === true,
-          Academy: updateData.acessos.Academy === true,
-          Desk: updateData.acessos.Desk === true,
-          Ouvidoria: updateData.acessos.Ouvidoria === true,
-          Sociais: updateData.acessos.Sociais === true,
-          realTime: updateData.acessos.realTime === true,
-          apoioN1: updateData.acessos.apoioN1 === true,
-          ChavePix: updateData.acessos.ChavePix === true
-        };
       }
     }
     
-    // Se funcionário está desligado ou afastado, forçar acessos como objeto com todos false
+    if (updateData.acessos !== undefined) {
+      updateData.acessos = normalizarAcessosParaResposta(updateData.acessos);
+    }
     if (updateData.desligado || updateData.afastado) {
-      updateData.acessos = { Velohub: false, Console: false, Academy: false, Desk: false, Ouvidoria: false, Sociais: false, realTime: false, apoioN1: false, ChavePix: false };
+      updateData.acessos = normalizarAcessosPlataforma(null);
     }
     // Se acessos não foi fornecido no update, não alterar o valor existente
     
@@ -2462,13 +2349,14 @@ router.get('/funcoes', async (req, res) => {
     // Buscar todas as funções ordenadas por createdAt DESC
     const funcoes = await QualidadeFuncoes.find({}).sort({ createdAt: -1 });
     
+    const funcoesFormatadas = funcoes.map((f) => formatFuncaoParaResposta(f));
     const response = {
       success: true,
-      data: funcoes,
-      count: funcoes.length
+      data: funcoesFormatadas,
+      count: funcoesFormatadas.length
     };
     
-    global.emitTraffic('Qualidade Funções', 'completed', `Concluído - ${funcoes.length} funções encontradas`);
+    global.emitTraffic('Qualidade Funções', 'completed', `Concluído - ${funcoesFormatadas.length} funções encontradas`);
     global.emitLog('success', `GET /api/qualidade/funcoes - ${funcoes.length} funções retornadas`);
     global.emitJsonInput(response);
     console.log('🔍 [COMPLIANCE] GET /api/qualidade/funcoes - Response:', response);
@@ -2495,7 +2383,7 @@ router.post('/funcoes', async (req, res) => {
     global.emitJson(req.body);
     console.log('🔍 [COMPLIANCE] POST /api/qualidade/funcoes - Body:', req.body);
     
-    const { funcao, descricao } = req.body;
+    const { funcao, descricao, modulosVelohub } = req.body;
     
     // Validação obrigatória: funcao não vazio
     if (!funcao || funcao.trim() === '') {
@@ -2513,14 +2401,15 @@ router.post('/funcoes', async (req, res) => {
     // Criar nova função
     const novaFuncao = new QualidadeFuncoes({
       funcao: funcao.trim(),
-      descricao: descricao ? descricao.trim() : ''
+      descricao: descricao ? descricao.trim() : '',
+      modulosVelohub: normalizarModulosVelohub(modulosVelohub),
     });
     
     const funcaoSalva = await novaFuncao.save();
     
     const response = {
       success: true,
-      data: funcaoSalva
+      data: formatFuncaoParaResposta(funcaoSalva)
     };
     
     global.emitTraffic('Qualidade Funções', 'completed', 'Concluído - Função criada com sucesso');
@@ -2557,7 +2446,7 @@ router.post('/funcoes', async (req, res) => {
 router.put('/funcoes/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { funcao, descricao } = req.body;
+    const { funcao, descricao, modulosVelohub } = req.body;
     
     global.emitTraffic('Qualidade Funções', 'received', `Entrada recebida - PUT /api/qualidade/funcoes/${id}`);
     global.emitLog('info', `PUT /api/qualidade/funcoes/${id} - Atualizando função`);
@@ -2576,8 +2465,11 @@ router.put('/funcoes/:id', async (req, res) => {
       return res.status(400).json(response);
     }
     
-    // Validação obrigatória: funcao não vazio
-    if (!funcao || funcao.trim() === '') {
+    const atualizacaoVisibilidade =
+      modulosVelohub !== undefined &&
+      (funcao === undefined || funcao === null || String(funcao).trim() === '');
+    
+    if (!atualizacaoVisibilidade && (!funcao || funcao.trim() === '')) {
       const response = {
         success: false,
         error: 'Nome da função é obrigatório'
@@ -2602,12 +2494,16 @@ router.put('/funcoes/:id', async (req, res) => {
     }
     
     global.emitTraffic('Qualidade Funções', 'processing', 'Atualizando no DB');
-    // Atualizar função
-    const updateData = {
-      funcao: funcao.trim(),
-      descricao: descricao ? descricao.trim() : '',
-      updatedAt: new Date()
-    };
+    const updateData = { updatedAt: new Date() };
+    if (modulosVelohub !== undefined) {
+      updateData.modulosVelohub = normalizarModulosVelohub(modulosVelohub);
+    }
+    if (funcao !== undefined && funcao !== null && String(funcao).trim() !== '') {
+      updateData.funcao = funcao.trim();
+    }
+    if (descricao !== undefined) {
+      updateData.descricao = descricao ? descricao.trim() : '';
+    }
     
     const funcaoAtualizada = await QualidadeFuncoes.findByIdAndUpdate(
       id,
@@ -2617,7 +2513,7 @@ router.put('/funcoes/:id', async (req, res) => {
     
     const response = {
       success: true,
-      data: funcaoAtualizada
+      data: formatFuncaoParaResposta(funcaoAtualizada)
     };
     
     global.emitTraffic('Qualidade Funções', 'completed', 'Concluído - Função atualizada com sucesso');
@@ -2627,8 +2523,9 @@ router.put('/funcoes/:id', async (req, res) => {
     
     res.json(response);
   } catch (error) {
+    const funcaoId = req.params.id;
     global.emitTraffic('Qualidade Funções', 'error', `Erro: ${error.message}`);
-    global.emitLog('error', `PUT /api/qualidade/funcoes/${id} - Erro: ${error.message}`);
+    global.emitLog('error', `PUT /api/qualidade/funcoes/${funcaoId} - Erro: ${error.message}`);
     console.error('[QUALIDADE-FUNCOES] Erro ao atualizar função:', error);
     
     // Verificar se é erro de duplicação
@@ -2652,8 +2549,19 @@ router.put('/funcoes/:id', async (req, res) => {
 
 // DELETE /api/qualidade/funcoes/:id - Deletar função
 router.delete('/funcoes/:id', async (req, res) => {
+  const dbgRunId = `delete-funcao-${Date.now()}`;
   try {
     const { id } = req.params;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'D',location:'qualidade.js:DELETE-funcoes:entry',message:'DELETE funcoes entry',data:{id,path:req.path},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    await ensureFuncionariosConnectionReady();
+
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'D',location:'qualidade.js:DELETE-funcoes:after-ensure',message:'funcionarios connection ready',data:{readyState:require('../config/funcionariosConnection').getFuncionariosConnection().readyState},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
     global.emitTraffic('Qualidade Funções', 'received', `Entrada recebida - DELETE /api/qualidade/funcoes/${id}`);
     global.emitLog('info', `DELETE /api/qualidade/funcoes/${id} - Deletando função`);
@@ -2673,6 +2581,9 @@ router.delete('/funcoes/:id', async (req, res) => {
     
     // Verificar se função existe
     const funcaoExistente = await QualidadeFuncoes.findById(id);
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'A',location:'qualidade.js:DELETE-funcoes:after-findById',message:'findById result',data:{found:!!funcaoExistente,funcao:funcaoExistente?.funcao??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!funcaoExistente) {
       const response = {
         success: false,
@@ -2685,15 +2596,24 @@ router.delete('/funcoes/:id', async (req, res) => {
     }
     
     global.emitTraffic('Qualidade Funções', 'processing', 'Verificando uso por funcionários');
-    // Verificar se há funcionários usando esta função
-    const funcionariosUsandoFuncao = await QualidadeFuncionario.find({
-      $or: [
-        { atuacao: funcaoExistente.funcao }, // Dados antigos (string)
-        { atuacao: { $in: [id] } } // Dados novos (array de ObjectIds)
-      ]
-    });
+    const nomeFuncao = funcaoExistente.funcao;
+    // Driver nativo: Mongoose falha ao cast { atuacao: string } quando schema é [{ funcao }]
+    const cadastroColl = getFuncionariosConnection().db.collection(FUNCIONARIOS_COLLECTIONS.CADASTRO);
+    const funcionarioEmUso = await cadastroColl.findOne(
+      {
+        $or: [
+          { 'atuacao.funcao': nomeFuncao },
+          { atuacao: nomeFuncao },
+        ],
+      },
+      { projection: { _id: 1 }, maxTimeMS: 15000 }
+    );
+
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'B',location:'qualidade.js:DELETE-funcoes:after-findOne',message:'findOne em uso (native)',data:{nomeFuncao,emUso:!!funcionarioEmUso},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
-    if (funcionariosUsandoFuncao.length > 0) {
+    if (funcionarioEmUso) {
       const response = {
         success: false,
         error: 'Função está em uso por funcionários. Não é possível deletar.'
@@ -2707,6 +2627,10 @@ router.delete('/funcoes/:id', async (req, res) => {
     global.emitTraffic('Qualidade Funções', 'processing', 'Deletando do DB');
     // Deletar função
     await QualidadeFuncoes.findByIdAndDelete(id);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'C',location:'qualidade.js:DELETE-funcoes:after-delete',message:'findByIdAndDelete ok',data:{id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     
     const response = {
       success: true,
@@ -2720,8 +2644,12 @@ router.delete('/funcoes/:id', async (req, res) => {
     
     res.json(response);
   } catch (error) {
+    const funcaoId = req.params.id;
+    // #region agent log
+    fetch('http://127.0.0.1:7602/ingest/0e6e527c-f244-4db3-a807-2b4e7ea64898',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4fb1c6'},body:JSON.stringify({sessionId:'4fb1c6',runId:dbgRunId,hypothesisId:'E',location:'qualidade.js:DELETE-funcoes:catch',message:'DELETE funcoes error',data:{funcaoId,errorName:error?.name,errorMessage:error?.message,errorCode:error?.code},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     global.emitTraffic('Qualidade Funções', 'error', `Erro: ${error.message}`);
-    global.emitLog('error', `DELETE /api/qualidade/funcoes/${id} - Erro: ${error.message}`);
+    global.emitLog('error', `DELETE /api/qualidade/funcoes/${funcaoId} - Erro: ${error.message}`);
     console.error('[QUALIDADE-FUNCOES] Erro ao deletar função:', error);
     const response = {
       success: false,

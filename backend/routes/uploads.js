@@ -21,7 +21,9 @@ const {
   configureBucketImagesCORS,
   configureBucketAcademyTrophiesCORS,
   getBucketCORS,
-  getBucketAcademyTrophies
+  getBucketAcademyTrophies,
+  listHomeDestaquesObjects,
+  uploadHomeDestaqueImage
 } = require('../config/gcs');
 
 // Configurar multer para upload de arquivos em memória
@@ -408,6 +410,28 @@ router.get('/images-cors-config', async (req, res) => {
       error: 'Erro ao obter configuração CORS',
       message: error.message || 'Erro desconhecido ao obter configuração CORS'
     });
+  }
+});
+
+router.get('/home-destaques-list', async (_req, res) => {
+  try {
+    const items = await listHomeDestaquesObjects();
+    res.json({ success: true, data: items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/home-destaques', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Nenhum arquivo enviado' });
+    }
+    const { buffer, originalname, mimetype } = req.file;
+    const result = await uploadHomeDestaqueImage(buffer, originalname, mimetype);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

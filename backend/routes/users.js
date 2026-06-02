@@ -1,4 +1,5 @@
-// VERSION: v1.9.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.10.0 | DATE: 2026-06-01 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.10.0 - Default _userClearance.corporativo ao criar usuário
 // CHANGELOG: v1.9.0 - Default _userTickets.gestaoQa ao criar usuário
 const express = require('express');
 const router = express.Router();
@@ -73,7 +74,8 @@ router.post('/', async (req, res) => {
         capacity: false,
         config: false,
         servicos: false,
-        academy: false
+        academy: false,
+        corporativo: false
       },
       _userTickets: _userTickets || {
         artigos: false,

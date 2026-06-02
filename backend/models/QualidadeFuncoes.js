@@ -1,7 +1,9 @@
-// VERSION: v1.7.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.9.0 | DATE: 2026-05-28 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.9.0 - Collection gerenciamento_atuacoes em console_funcionarios (getFuncionariosConnection)
 const mongoose = require('mongoose');
-// ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
-const { getAnalisesConnection } = require('../config/analisesConnection');
+const { normalizarModulosVelohub } = require('../utils/modulosVelohub');
+const { getFuncionariosConnection } = require('../config/funcionariosConnection');
+const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 
 // Schema para qualidade_funcoes - COMPLIANCE OBRIGATÓRIO
 const qualidadeFuncoesSchema = new mongoose.Schema({
@@ -21,6 +23,18 @@ const qualidadeFuncoesSchema = new mongoose.Schema({
     type: String,
     default: '',
     trim: true
+  },
+  modulosVelohub: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: () => normalizarModulosVelohub(null),
+    validate: {
+      validator: function (v) {
+        if (!Array.isArray(v) || v.length === 0) return false;
+        const normalized = normalizarModulosVelohub(v);
+        return normalized.length === 1 && typeof normalized[0] === 'object';
+      },
+      message: 'modulosVelohub deve ser um array com objeto de permissões VeloHub válido',
+    },
   },
   createdAt: {
     type: Date,
@@ -50,14 +64,18 @@ let QualidadeFuncoesModel = null;
 const getModel = () => {
   if (!QualidadeFuncoesModel) {
     try {
-      const connection = getAnalisesConnection();
+      const connection = getFuncionariosConnection();
       
       // Validar que conexão existe e está válida
       if (!connection) {
         throw new Error('Conexão MongoDB não foi criada');
       }
       
-      QualidadeFuncoesModel = connection.model('QualidadeFuncoes', qualidadeFuncoesSchema, 'qualidade_funcoes');
+      QualidadeFuncoesModel = connection.model(
+        'QualidadeFuncoes',
+        qualidadeFuncoesSchema,
+        FUNCIONARIOS_COLLECTIONS.ATUACOES
+      );
     } catch (error) {
       console.error('❌ Erro ao inicializar modelo QualidadeFuncoes:', error);
       throw error;

@@ -1,8 +1,10 @@
-// VERSION: v1.3.0 | DATE: 2025-02-09 | AUTHOR: VeloHub Development Team
-const { getDatabase } = require('../config/database');
+// VERSION: v1.4.0 | DATE: 2026-05-28 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.4.0 - hub_sessions em console_funcionarios (getFuncionariosDatabase)
+const { getFuncionariosDatabase } = require('../config/database');
+const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 
 /**
- * Schema: console_conteudo.hub_sessions
+ * Schema: console_funcionarios.hub_sessions
  * {
  *   _id: ObjectId,
  *   colaboradorNome: String,           // Nome do colaborador
@@ -19,12 +21,12 @@ const { getDatabase } = require('../config/database');
  */
 class HubSessions {
   constructor() {
-    this.collectionName = 'hub_sessions';
+    this.collectionName = FUNCIONARIOS_COLLECTIONS.HUB_SESSIONS;
   }
 
   // Obter coleção
   getCollection() {
-    const db = getDatabase();
+    const db = getFuncionariosDatabase();
     return db.collection(this.collectionName);
   }
 

@@ -1,4 +1,6 @@
-// VERSION: v1.0.0 | DATE: 2025-11-25 | AUTHOR: VeloHub Development Team
+// VERSION: v1.0.2 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.0.2 - ensureAnalisesConnectionReady() no startup do servidor
+// CHANGELOG: v1.0.1 - asPromise().catch evita unhandledRejection quando SRV/DNS falha
 const mongoose = require('mongoose');
 const { getMongoUri } = require('./mongodb');
 
@@ -34,6 +36,10 @@ const getAnalisesConnection = () => {
       analisesConnection.on('disconnected', () => {
         console.warn('⚠️ Conexão MongoDB (console_analises) desconectada');
       });
+
+      void analisesConnection.asPromise().catch((err) => {
+        console.error('❌ Falha assíncrona MongoDB (console_analises):', err.message);
+      });
     } catch (error) {
       console.error('❌ Erro ao criar conexão MongoDB (console_analises):', error);
       throw error;
@@ -42,8 +48,16 @@ const getAnalisesConnection = () => {
   return analisesConnection;
 };
 
+const ensureAnalisesConnectionReady = async () => {
+  const conn = getAnalisesConnection();
+  if (conn.readyState === 1) return conn;
+  await conn.asPromise();
+  return conn;
+};
+
 module.exports = {
   getAnalisesConnection,
+  ensureAnalisesConnectionReady,
   ANALISES_DB_NAME
 };
 

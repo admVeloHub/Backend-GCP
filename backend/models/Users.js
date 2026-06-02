@@ -1,4 +1,5 @@
-// VERSION: v1.16.0 | DATE: 2026-04-30 | AUTHOR: VeloHub Development Team
+// VERSION: v1.17.0 | DATE: 2026-06-01 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.17.0 - _userClearance.corporativo (módulo Corporativo no Console)
 // CHANGELOG: v1.16.0 - _userTickets.gestaoQa (chamados Gestão direcionados a QA)
 const mongoose = require('mongoose');
 const { getMongoUri } = require('../config/mongodb');
@@ -54,7 +55,8 @@ const userSchema = new mongoose.Schema({
     config: { type: Boolean, default: false },
     servicos: { type: Boolean, default: false },
     academy: { type: Boolean, default: false },
-    whatsapp: { type: Boolean, default: false }
+    whatsapp: { type: Boolean, default: false },
+    corporativo: { type: Boolean, default: false }
   },
   _userTickets: {
     artigos: { type: Boolean, default: false },

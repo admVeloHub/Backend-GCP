@@ -13,7 +13,8 @@ const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
-const { connectToDatabase, getConfigDatabase, getAcademyDatabase, getAnalisesDatabase } = require('../config/database');
+const { connectToDatabase, getConfigDatabase, getAcademyDatabase, getAnalisesDatabase, getFuncionariosDatabase } = require('../config/database');
+const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 const { resolveQaTrophyXp } = require('../lib/conquistaXpMatrix');
 const QaFeedback = require('../models/QaFeedback');
 const { generateQaFeedbackEmail } = require('../services/geminiService');
@@ -147,6 +148,24 @@ function normalizeStringArray(values) {
     });
 }
 
+async function getOpcoesCadastroDoc() {
+  await connectToDatabase();
+  const col = getFuncionariosDatabase().collection(FUNCIONARIOS_COLLECTIONS.OPCOES_CADASTRO);
+  return col.findOne({ id: 'cadastro_campos' });
+}
+
+function docOpcoesCadastroParaValoresCampos(doc) {
+  const base = doc || {};
+  return {
+    id: 'cadastro_campos',
+    escalas: Array.isArray(base.escalas) ? base.escalas : [],
+    empresas: Array.isArray(base.empresas) ? base.empresas : [],
+    departamentos: Array.isArray(base.departamentos) ? base.departamentos : [],
+    createdAt: base.createdAt,
+    updatedAt: base.updatedAt,
+  };
+}
+
 /** Itens do catálogo QA Troféus (console_config.valores_campos id qa_trophies_catalog). */
 function normalizeQaTrophiesCatalogItems(items) {
   if (!Array.isArray(items)) return [];
@@ -225,6 +244,11 @@ router.get('/valores-campos/:key', async (req, res) => {
     return res.status(400).json({ success: false, error: 'key é obrigatório' });
   }
   try {
+    if (key === 'cadastro_campos') {
+      const doc = await getOpcoesCadastroDoc();
+      const opcoes = normalizeValoresCampoDoc(docOpcoesCadastroParaValoresCampos(doc));
+      return res.json({ success: true, opcoes, key });
+    }
     await connectToDatabase();
     const configDb = getConfigDatabase();
     const col = configDb.collection('valores_campos');
@@ -265,8 +289,12 @@ router.get('/valores-campos', async (req, res) => {
       'qa_trophy_config',
       'qa_trophies_catalog'
     ];
-    const query = includeAll ? {} : { id: { $in: idsPadrao } };
+    const query = includeAll ? {} : { id: { $in: idsPadrao.filter((id) => id !== 'cadastro_campos') } };
     const docs = await col.find(query).toArray();
+    const cadastroDoc = docOpcoesCadastroParaValoresCampos(await getOpcoesCadastroDoc());
+    if (includeAll || idsPadrao.includes('cadastro_campos')) {
+      docs.push(cadastroDoc);
+    }
     return res.json({ success: true, data: docs });
   } catch (error) {
     console.error('GET /valores-campos', error?.message || error);
@@ -289,20 +317,38 @@ router.put('/valores-campos/:id', async (req, res) => {
   }
   try {
     await connectToDatabase();
-    const configDb = getConfigDatabase();
-    const col = configDb.collection('valores_campos');
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const now = new Date();
+
+    if (id === 'cadastro_campos') {
+      const col = getFuncionariosDatabase().collection(FUNCIONARIOS_COLLECTIONS.OPCOES_CADASTRO);
+      const setDoc = {
+        id: 'cadastro_campos',
+        escalas: normalizeStringArray(body.escalas),
+        empresas: normalizeStringArray(body.empresas),
+        departamentos: normalizeStringArray(body.departamentos),
+        updatedAt: now,
+      };
+      const result = await col.findOneAndUpdate(
+        { id: 'cadastro_campos' },
+        { $set: setDoc, $setOnInsert: { createdAt: now } },
+        { upsert: true, returnDocument: 'after' }
+      );
+      return res.json({
+        success: true,
+        data: docOpcoesCadastroParaValoresCampos(result),
+        message: 'Opções de cadastro atualizadas',
+      });
+    }
+
+    const configDb = getConfigDatabase();
+    const col = configDb.collection('valores_campos');
     const baseSet = {
       id,
       updatedAt: now
     };
     let setDoc = { ...baseSet };
-
-    if (id === 'cadastro_campos') {
-      setDoc.escalas = normalizeStringArray(body.escalas);
-      setDoc.empresas = normalizeStringArray(body.empresas);
-    } else if (id === 'destaques_itens') {
+    if (id === 'destaques_itens') {
       setDoc.destaques = normalizeStringArray(body.destaques);
     } else if (id === 'oportunidades_itens') {
       setDoc.oportunidades = normalizeStringArray(body.oportunidades);

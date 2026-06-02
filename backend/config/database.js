@@ -1,6 +1,9 @@
-// VERSION: v3.7.0 | DATE: 2025-01-30 | AUTHOR: VeloHub Development Team
+// VERSION: v3.8.1 | DATE: 2026-06-01 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v3.8.1 - getMongoClient exportado (hub_corporate / corporativo legal)
+// CHANGELOG: v3.8.0 - getFuncionariosDatabase (console_funcionarios)
 const { MongoClient } = require('mongodb');
 const { getMongoUri } = require('./mongodb');
+const { FUNCIONARIOS_DB_NAME } = require('./funcionariosCollections');
 
 // Configuração do MongoDB
 const DB_NAME = process.env.MONGODB_DB_NAME || 'console_conteudo';
@@ -15,6 +18,7 @@ let configDb;
 let analisesDb;
 let academyDb;
 let sociaisDb;
+let funcionariosDb;
 
 // Conectar ao MongoDB
 const connectToDatabase = async () => {
@@ -51,6 +55,10 @@ const connectToDatabase = async () => {
     if (!sociaisDb) {
       sociaisDb = client.db(SOCIAIS_DB_NAME);
     }
+
+    if (!funcionariosDb) {
+      funcionariosDb = client.db(FUNCIONARIOS_DB_NAME);
+    }
     
     return db;
   } catch (error) {
@@ -65,6 +73,14 @@ const getDatabase = () => {
     throw new Error('Database não conectado. Chame connectToDatabase() primeiro.');
   }
   return db;
+};
+
+// Obter MongoClient (acesso a outros DBs, ex.: hub_corporate)
+const getMongoClient = () => {
+  if (!client) {
+    throw new Error('MongoClient não conectado. Chame connectToDatabase() primeiro.');
+  }
+  return client;
 };
 
 // Obter instância do banco de configuração
@@ -99,6 +115,14 @@ const getSociaisDatabase = () => {
   return sociaisDb;
 };
 
+// Obter instância do banco console_funcionarios (cadastro, sessões, atuações)
+const getFuncionariosDatabase = () => {
+  if (!funcionariosDb) {
+    throw new Error('Funcionarios Database não conectado. Chame connectToDatabase() primeiro.');
+  }
+  return funcionariosDb;
+};
+
 // Fechar conexão
 const closeDatabase = async () => {
   if (client) {
@@ -121,10 +145,12 @@ const checkDatabaseHealth = async () => {
 module.exports = {
   connectToDatabase,
   getDatabase,
+  getMongoClient,
   getConfigDatabase,
   getAnalisesDatabase,
   getAcademyDatabase,
   getSociaisDatabase,
+  getFuncionariosDatabase,
   closeDatabase,
   checkDatabaseHealth
 };

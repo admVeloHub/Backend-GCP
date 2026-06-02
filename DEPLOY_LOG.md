@@ -1,6 +1,27 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
+<!-- VERSION: v1.1.0 | DATE: 2026-06-02 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — Qualidade atuacao por extenso + rotas Corporativo — 2026-06-02
+
+**Data/Hora:** 2026-06-02  
+**Tipo:** Push GitHub  
+**Versão:** `qualidade.js` v5.27.x, `QualidadeFuncionario.js` v1.20.x, `normalizarAtuacaoFuncionario.js` v1.1.0  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+`qualidade_funcionarios.atuacao` normalizado para `[{ funcao: String }]` no GET/POST/PUT; util `normalizarAtuacaoFuncionario`; conexão/coleções funcionários; rotas Corporativo (agenda, avisos, banner, legal); ajustes `qualidadeQaFeedback`, `users`, `server.js`.
+
+### Arquivos modificados (principais):
+- `backend/routes/qualidade.js`, `backend/models/QualidadeFuncionario.js`, `backend/utils/normalizarAtuacaoFuncionario.js` (novo)
+- `backend/config/funcionariosConnection.js`, `funcionariosCollections.js` (novos)
+- `backend/routes/corporativo*.js`, `backend/config/hubCorporateDb.js` (novos)
+- `backend/routes/qualidadeQaFeedback.js`, `backend/server.js`, `DEPLOY_LOG.md`
+
+---
 
 ## Reescrita de histórico Git (URIs Mongo nos blobs) — 2026-04-23
 

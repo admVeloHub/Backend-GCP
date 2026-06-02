@@ -131,7 +131,7 @@ async function runNotifyCategoryMembersNewTicket(ticket, collectionLabel) {
     if (!emailService.isReady()) {
       global.emitLog(
         'warning',
-        `runNotifyCategoryMembersNewTicket - Serviço de e-mail não pronto (${ticketType}): interruptor DESLIGADO, EMAIL_ENABLED!=true ou sem Gmail/SMTP — Conexões / env`
+        `runNotifyCategoryMembersNewTicket - Serviço de e-mail não pronto (${ticketType}): interruptor DESLIGADO, EMAIL_ENABLED!=true ou Gmail API não configurado — Conexões / env`
       );
       return { attempted: 0, succeeded: 0, skipReason: 'email_not_ready' };
     }

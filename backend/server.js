@@ -1,4 +1,6 @@
-// VERSION: v4.23.0 | DATE: 2026-04-29 | AUTHOR: VeloHub Development Team
+// VERSION: v4.23.2 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v4.23.2 - Startup: aquece conexões mongoose console_funcionarios e console_analises
+// CHANGELOG: v4.23.1 - Dev: unhandledRejection não encerra o processo (API permanece na porta 3001 se Mongo falhar)
 // CHANGELOG: v4.23.0 - Após mongoose: bootstrap EmailTransportConfig (Mongo email_config Gmail API)
 // CHANGELOG: v4.21.0 - Dev: loadFonteVerdadeEnv (bootstrapFonteEnv.cjs ou FONTE DA VERDADE/.env ou VELOHUB_DOTENV_PATH)
 // CHANGELOG: v4.20.1 - Dev: credenciais via FONTE DA VERDADE/.env (bootstrapFonteEnv.cjs)
@@ -26,9 +28,11 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Promise rejeitada não tratada (unhandledRejection):', reason);
   console.error('❌ Promise:', promise);
-  // Só fazer exit se servidor já iniciou
-  if (serverStarted) {
+  const isDev = (process.env.NODE_ENV || 'development') === 'development';
+  if (serverStarted && !isDev) {
     setTimeout(() => process.exit(1), 5000);
+  } else if (serverStarted && isDev) {
+    console.error('⚠️ [dev] Servidor permanece ativo; corrija Mongo/rede e reinicie se necessário');
   } else {
     console.error('⚠️ Promise rejeitada antes do servidor iniciar, mas continuando...');
   }
@@ -80,6 +84,7 @@ const uploadsRoutes = require('./routes/uploads');
 const sociaisRoutes = require('./routes/sociais');
 const aiServicesRoutes = require('./routes/aiServices');
 const emailRoutes = require('./routes/email');
+const corporativoRoutes = require('./routes/corporativo');
 
 // Importar middleware
 const { checkMonitoringFunctions } = require('./middleware/monitoring');
@@ -209,20 +214,22 @@ app.use('/api/whatsapp', (req, res) => {
 app.use('/api/sociais', sociaisRoutes);
 app.use('/api/ai-services', aiServicesRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/corporativo', corporativoRoutes);
 
 // Rota de health check
 app.get('/api/health', async (req, res) => {
   try {
     const dbHealth = await checkDatabaseHealth();
-    const collectionsStats = await getCollectionsStats();
-    
-    res.json({ 
-      status: 'OK', 
+    const light = req.query.light === '1' || req.query.light === 'true';
+    const collectionsStats = light ? {} : await getCollectionsStats();
+
+    res.json({
+      status: 'OK',
       timestamp: new Date().toISOString(),
       version: '4.2.0',
       environment: process.env.NODE_ENV || 'development',
       database: dbHealth,
-      collections: collectionsStats
+      collections: collectionsStats,
     });
   } catch (error) {
     res.status(500).json({ 
@@ -384,6 +391,15 @@ const startServer = async () => {
       await mongoose.connect(MONGODB_URI, {
         dbName: 'console_conteudo'
       });
+
+      const { ensureFuncionariosConnectionReady } = require('./config/funcionariosConnection');
+      const { ensureAnalisesConnectionReady } = require('./config/analisesConnection');
+      console.log('🔄 Aquecendo conexões Mongoose (funcionarios / analises)...');
+      await Promise.all([
+        ensureFuncionariosConnectionReady(),
+        ensureAnalisesConnectionReady(),
+      ]);
+      console.log('✅ Conexões Mongoose secundárias prontas');
 
       const { bootstrapEmailTransportFromMongo } = require('./services/emailTransportBootstrap');
       await bootstrapEmailTransportFromMongo();

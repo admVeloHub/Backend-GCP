@@ -1,4 +1,7 @@
-// VERSION: v1.16.0 | DATE: 2026-04-15 | AUTHOR: VeloHub Development Team
+// VERSION: v1.20.1 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.20.1 - Índice atuacao.funcao (consulta DELETE /funcoes e listagens)
+// CHANGELOG: v1.20.0 - atuacao [{ funcao: String }] nomes por extenso; aceita legado ObjectId/string na validação
+// CHANGELOG: v1.17.0 - Campo departamento (String, acima de atuacao; alinhado a LISTA_SCHEMAS qualidade_funcionarios)
 // CHANGELOG: v1.16.0 - Adicionado campo ChavePix ao objeto acessos (credencial Chave Pix); validador e normalizações array/objeto atualizadas
 // CHANGELOG: v1.15.0 - Adicionado campo apoioN1 ao objeto acessos (credencial Apoio N1); validador e normalizações array/objeto atualizados
 // CHANGELOG: v1.14.0 - Adicionado campo Sociais ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean, Sociais: Boolean, realTime: Boolean}
@@ -6,8 +9,10 @@
 // CHANGELOG: v1.12.0 - Adicionado campo Ouvidoria ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean, Ouvidoria: Boolean}
 // CHANGELOG: v1.11.0 - Adicionado campo Desk ao objeto acessos {Velohub: Boolean, Console: Boolean, Academy: Boolean, Desk: Boolean}
 const mongoose = require('mongoose');
+const { normalizarAcessosPlataforma } = require('../utils/modulosVelohub');
 // ✅ USAR CONEXÃO COMPARTILHADA para garantir que populate funcione corretamente
-const { getAnalisesConnection } = require('../config/analisesConnection');
+const { getFuncionariosConnection } = require('../config/funcionariosConnection');
+const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 
 // Schema para acessos dos funcionários (FORMATO ANTIGO - mantido para compatibilidade)
 const acessoSchema = new mongoose.Schema({
@@ -28,6 +33,17 @@ const acessoSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+const atuacaoItemSchema = new mongoose.Schema(
+  {
+    funcao: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  { _id: false }
+);
 
 // Schema principal para qualidade_funcionarios
 const qualidadeFuncionarioSchema = new mongoose.Schema({
@@ -90,20 +106,29 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  atuacao: {
-    type: mongoose.Schema.Types.Mixed, // Suporta String (antigo) e Array de ObjectIds (novo)
+  departamento: {
+    type: String,
     default: '',
+    trim: true
+  },
+  atuacao: {
+    type: [atuacaoItemSchema],
+    default: [],
     validate: {
       validator: function(v) {
-        // Aceita string vazia, string não vazia, ou array de ObjectIds
-        if (typeof v === 'string') return true;
-        if (Array.isArray(v)) {
-          return v.every(id => mongoose.Types.ObjectId.isValid(id));
-        }
-        return false;
+        if (typeof v === 'string') return String(v).trim().length > 0;
+        if (!Array.isArray(v)) return false;
+        return v.every((item) => {
+          if (item == null) return false;
+          if (typeof item === 'string') return item.trim().length > 0;
+          if (typeof item === 'object' && item.funcao != null) {
+            return String(item.funcao).trim().length > 0;
+          }
+          return mongoose.Types.ObjectId.isValid(item);
+        });
       },
-      message: 'Atuação deve ser uma string ou array de ObjectIds válidos'
-    }
+      message: 'Atuação deve ser array de objetos { funcao: "nome por extenso" }',
+    },
   },
   escala: {
     type: String,
@@ -112,7 +137,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
   },
   // Campo acessos suporta ambos os formatos durante transição
   // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
-  // Formato novo: Objeto booleano {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1, ChavePix}
+  // Formato novo: objeto booleano só plataformas; legado no DB pode ter chaves de módulo até migração
   acessos: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
@@ -123,7 +148,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         // Formato novo: objeto com chaves de credenciais (booleanos)
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
-          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'Ouvidoria', 'Sociais', 'realTime', 'apoioN1', 'ChavePix'];
+          const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'realTime', 'Ouvidoria', 'Sociais', 'apoioN1', 'ChavePix'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
         
@@ -138,7 +163,7 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
         
         return false;
       },
-      message: 'Acessos deve ser um objeto {Velohub, Console, Academy, Desk, Ouvidoria, Sociais, realTime, apoioN1, ChavePix} (booleanos) ou array de objetos [{sistema, perfil, ...}]'
+      message: 'Acessos deve ser um objeto de plataformas (booleanos) ou array legado [{sistema, perfil, ...}]'
     }
   },
   desligado: {
@@ -170,6 +195,9 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
 // Middleware para atualizar updatedAt antes de salvar
 qualidadeFuncionarioSchema.pre('save', function(next) {
   this.updatedAt = new Date();
+  if (this.acessos && typeof this.acessos === 'object' && !Array.isArray(this.acessos)) {
+    this.acessos = normalizarAcessosPlataforma(this.acessos);
+  }
   next();
 });
 
@@ -288,6 +316,7 @@ qualidadeFuncionarioSchema.index({ desligado: 1, afastado: 1 });
 qualidadeFuncionarioSchema.index({ createdAt: -1 });
 qualidadeFuncionarioSchema.index({ CPF: 1 }, { unique: true, sparse: true }); // Índice único esparso (apenas para CPFs definidos)
 qualidadeFuncionarioSchema.index({ userMail: 1 }, { unique: true, sparse: true }); // Índice único esparso (apenas para emails definidos)
+qualidadeFuncionarioSchema.index({ 'atuacao.funcao': 1 });
 
 // Modelo - criado com lazy loading
 let QualidadeFuncionarioModel = null;
@@ -295,14 +324,18 @@ let QualidadeFuncionarioModel = null;
 const getModel = () => {
   if (!QualidadeFuncionarioModel) {
     try {
-      const connection = getAnalisesConnection();
+      const connection = getFuncionariosConnection();
       
       // Validar que conexão existe e está válida
       if (!connection) {
         throw new Error('Conexão MongoDB não foi criada');
       }
       
-      QualidadeFuncionarioModel = connection.model('QualidadeFuncionario', qualidadeFuncionarioSchema, 'qualidade_funcionarios');
+      QualidadeFuncionarioModel = connection.model(
+        'QualidadeFuncionario',
+        qualidadeFuncionarioSchema,
+        FUNCIONARIOS_COLLECTIONS.CADASTRO
+      );
 
       // Método estático para obter funcionários ativos (não desligados e não afastados)
       QualidadeFuncionarioModel.getActiveFuncionarios = async function() {
