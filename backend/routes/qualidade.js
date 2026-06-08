@@ -1,6 +1,7 @@
-// VERSION: v5.28.2 | DATE: 2026-06-05 | AUTHOR: VeloHub Development Team
-// CHANGELOG:
-// v5.28.2 - GET/POST/PUT avaliacoes: resposta com dataLigacao/horaLigacao absolutos (legado BSON Date via qualidadeDataLigacao util)
+// VERSION: v5.28.4 | DATE: 2026-06-08 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v5.28.4 - qualidadeDataLigacao v1.1.0: normalização legado BSON Date→YYYY-MM-DD; ticket-avaliacoes normaliza dataChamado na resposta
+// CHANGELOG: v5.28.3 - GET avaliacoes/ticket-avaliacoes: leitura via collection nativa (evita CastError em docs legados); dataLigacao Mixed no model
+// CHANGELOG: v5.28.2 - GET/POST/PUT avaliacoes: resposta com dataLigacao/horaLigacao absolutos (legado BSON Date via qualidadeDataLigacao util)
 // v5.28.1 - qualidade_avaliacoes: dataLigacao String YYYY-MM-DD absoluta (sem Date/UTC); horaLigacao HH:mm
 // v5.28.0 - qualidade_avaliacoes: horaLigacao (String HH:mm absoluto); dataLigacao normalizada para só data (UTC)
 // v5.27.3 - DELETE /funcoes/:id: checagem em uso via driver nativo ($or atuacao.funcao + legado string; evita ObjectParameterError)
@@ -66,6 +67,34 @@ const toAvaliacaoResposta = (doc) => {
 };
 
 const toAvaliacoesListaResposta = (docs) => (docs || []).map(toAvaliacaoResposta);
+
+/** Consulta qualidade_avaliacoes sem cast Mongoose (BSON Date legado em dataLigacao). */
+const queryQualidadeAvaliacoesRaw = async (filter = {}, sort = { createdAt: -1 }) => {
+  const coll = QualidadeAvaliacao.collection;
+  if (!coll) {
+    return QualidadeAvaliacao.find(filter).sort(sort).lean();
+  }
+  return coll.find(filter).sort(sort).toArray();
+};
+
+const listarQualidadeAvaliacoesRaw = () => queryQualidadeAvaliacoesRaw({});
+
+/** Lista qualidade_ticket_avaliacoes sem cast Mongoose (tipos legados no banco). */
+const toTicketAvaliacaoResposta = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  return normalizarAvaliacaoDataLigacaoLegado(plain);
+};
+
+const toTicketAvaliacoesListaResposta = (docs) => (docs || []).map(toTicketAvaliacaoResposta);
+
+const listarQualidadeTicketAvaliacoesRaw = async () => {
+  const coll = QualidadeTicketAvaliacao.collection;
+  if (!coll) {
+    return QualidadeTicketAvaliacao.find({}).sort({ createdAt: -1 }).lean();
+  }
+  return coll.find({}).sort({ createdAt: -1 }).toArray();
+};
 
 const formatFuncaoParaResposta = (doc) => {
   const o = doc && doc.toObject ? doc.toObject() : doc;
@@ -1319,8 +1348,7 @@ router.get('/avaliacoes', async (req, res) => {
   try {
     console.log(`[QUALIDADE-AVALIACOES] ${new Date().toISOString()} - GET /avaliacoes - PROCESSING`);
     
-    const avaliacoes = await QualidadeAvaliacao.find({})
-      .sort({ createdAt: -1 });
+    const avaliacoes = await listarQualidadeAvaliacoesRaw();
     
     res.json({
       success: true,
@@ -1344,7 +1372,10 @@ router.get('/avaliacoes/:id', async (req, res) => {
     const { id } = req.params;
     console.log(`[QUALIDADE-AVALIACOES] ${new Date().toISOString()} - GET /avaliacoes/${id} - PROCESSING`);
     
-    const avaliacao = await QualidadeAvaliacao.findById(id);
+    const avaliacaoRaw = mongoose.Types.ObjectId.isValid(id)
+      ? await QualidadeAvaliacao.collection.findOne({ _id: new mongoose.Types.ObjectId(id) })
+      : null;
+    const avaliacao = avaliacaoRaw;
     
     if (!avaliacao) {
       return res.status(404).json({
@@ -1591,10 +1622,10 @@ router.delete('/avaliacoes/:id', async (req, res) => {
 // GET /api/qualidade/ticket-avaliacoes
 router.get('/ticket-avaliacoes', async (req, res) => {
   try {
-    const list = await QualidadeTicketAvaliacao.find({}).sort({ createdAt: -1 });
+    const list = await listarQualidadeTicketAvaliacoesRaw();
     res.json({
       success: true,
-      data: list,
+      data: toTicketAvaliacoesListaResposta(list),
       count: list.length
     });
   } catch (error) {
@@ -1723,8 +1754,10 @@ router.get('/avaliacoes/colaborador/:nome', async (req, res) => {
     const { nome } = req.params;
     console.log(`[QUALIDADE-AVALIACOES] ${new Date().toISOString()} - GET /avaliacoes/colaborador/${nome} - PROCESSING`);
     
-    const avaliacoes = await QualidadeAvaliacao.find({ colaboradorNome: nome })
-      .sort({ dataAvaliacao: -1 });
+    const avaliacoes = await queryQualidadeAvaliacoesRaw(
+      { colaboradorNome: nome },
+      { dataAvaliacao: -1 }
+    );
     
     res.json({
       success: true,
@@ -1748,10 +1781,10 @@ router.get('/avaliacoes/mes/:mes/ano/:ano', async (req, res) => {
     
     console.log(`[QUALIDADE-AVALIACOES] ${new Date().toISOString()} - GET /avaliacoes/mes/${mes}/ano/${ano} - PROCESSING`);
     
-    const avaliacoes = await QualidadeAvaliacao.find({ 
-      mes: mes, 
-      ano: anoNumber 
-    }).sort({ dataAvaliacao: -1 });
+    const avaliacoes = await queryQualidadeAvaliacoesRaw(
+      { mes: mes, ano: anoNumber },
+      { dataAvaliacao: -1 }
+    );
     
     res.json({
       success: true,
@@ -1776,8 +1809,10 @@ router.get('/relatorios/agente/:nome', async (req, res) => {
     console.log(`[QUALIDADE-RELATORIOS] ${new Date().toISOString()} - GET /relatorios/agente/${nome} - PROCESSING`);
     
     // Buscar todas as avaliações do colaborador
-    const avaliacoes = await QualidadeAvaliacao.find({ colaboradorNome: nome })
-      .sort({ dataAvaliacao: -1 });
+    const avaliacoes = await queryQualidadeAvaliacoesRaw(
+      { colaboradorNome: nome },
+      { dataAvaliacao: -1 }
+    );
     
     if (avaliacoes.length === 0) {
       return res.json({
@@ -1852,10 +1887,10 @@ router.get('/relatorios/gestao/:mes/:ano', async (req, res) => {
     console.log(`[QUALIDADE-RELATORIOS] ${new Date().toISOString()} - GET /relatorios/gestao/${mes}/${ano} - PROCESSING`);
     
     // Buscar todas as avaliações do período
-    const avaliacoes = await QualidadeAvaliacao.find({ 
-      mes: mes, 
-      ano: anoNumber 
-    }).sort({ dataAvaliacao: -1 });
+    const avaliacoes = await queryQualidadeAvaliacoesRaw(
+      { mes: mes, ano: anoNumber },
+      { dataAvaliacao: -1 }
+    );
     
     if (avaliacoes.length === 0) {
       return res.json({

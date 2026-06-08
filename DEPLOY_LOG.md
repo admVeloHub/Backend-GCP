@@ -1,7 +1,44 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
-<!-- VERSION: v1.2.0 | DATE: 2026-06-05 -->
+<!-- VERSION: v1.2.2 | DATE: 2026-06-08 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — Hotfix: GET avaliacoes 500 + dataLigacao legado na coluna Atendimento — 2026-06-08
+
+**Data/Hora:** 2026-06-08  
+**Tipo:** Push GitHub  
+**Versão:** `qualidade.js` v5.28.4, `QualidadeAvaliacao.js` v2.7.2, `qualidadeDataLigacao.js` v1.1.0  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+
+### Descrição:
+Correção de 500 em GET `/api/qualidade/avaliacoes` e `/ticket-avaliacoes` (BSON Date legado em `dataLigacao`). Leitura via driver nativo + campo Mixed. Normalização na resposta para `dataLigacao` YYYY-MM-DD (LISTA_SCHEMAS) a partir de BSON Date, ISO e `$date`; ticket normaliza `dataChamado` na listagem.
+
+### Arquivos:
+- `backend/models/QualidadeAvaliacao.js` v2.7.2
+- `backend/routes/qualidade.js` v5.28.4
+- `backend/utils/qualidadeDataLigacao.js` v1.1.0
+- `DEPLOY_LOG.md` v1.2.2
+
+---
+
+## Push GitHub — Hotfix: GET avaliacoes 500 (dataLigacao legado Date) — 2026-06-08
+
+**Data/Hora:** 2026-06-08  
+**Tipo:** Push GitHub (substituído pela entrada consolidada acima)  
+**Versão:** `qualidade.js` v5.28.3, `QualidadeAvaliacao.js` v2.7.2  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+
+### Descrição:
+Correção de 500 em GET `/api/qualidade/avaliacoes` e `/ticket-avaliacoes`: documentos legados com `dataLigacao` BSON Date quebravam após schema String. Leitura via driver nativo + `dataLigacao` Mixed; normalização na resposta mantida.
+
+### Arquivos:
+- `backend/models/QualidadeAvaliacao.js` v2.7.2
+- `backend/routes/qualidade.js` v5.28.3
+- `DEPLOY_LOG.md` v1.2.1
+
+---
 
 ## Push GitHub — Qualidade: leitura dual audio_analise_results + data/hora ligação absoluta — 2026-06-05
 
