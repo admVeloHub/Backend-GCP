@@ -1,4 +1,7 @@
-// VERSION: v3.1.2 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// VERSION: v3.2.0 | DATE: 2026-06-05 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v3.2.0 - Leitura dual LISTA+legado: avaliacao_id, transcricao, analiseDialogo, criteriosDetalhados, pontuacaoCalculada, observacaoGPT via normalizador
+// CHANGELOG: v3.1.4 - avaliacaoMonitorId: dataLigacao/horaLigacao absolutos na resposta (legado BSON Date)
+// CHANGELOG: v3.1.3 - populate avaliacaoMonitorId: inclui horaLigacao (hora absoluta da ligação)
 // CHANGELOG: v3.1.2 - Release push GitHub 2026-04-10 (mesma revisão que GET /results-por-avaliacoes e populate cold start)
 // CHANGELOG: v3.1.1 - Carregar QualidadeAvaliacao na conexão console_analises antes de populate em GET /result (evita Schema hasn't been registered)
 // CHANGELOG: v3.1.0 - GET /results-por-avaliacoes: lote por ?ids= (max 60) para lista Status IA sem N requisições
@@ -19,6 +22,52 @@ const router = express.Router();
 // AudioAnaliseStatus removido - campos fundidos em QualidadeAvaliacao
 const AudioAnaliseResult = require('../models/AudioAnaliseResult');
 const QualidadeAvaliacao = require('../models/QualidadeAvaliacao');
+const { normalizarAvaliacaoDataLigacaoLegado } = require('../utils/qualidadeDataLigacao');
+const {
+  normalizeAudioAnaliseResultForClient,
+  buildAvaliacaoIdOrFilter,
+  resolveAvaliacaoId
+} = require('../utils/qualidadeAudioAnaliseNormalize');
+
+const AVALIACAO_POPULATE_SELECT =
+  'colaboradorNome dataLigacao horaLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot';
+
+function extractAvaliacaoContext(resultObj) {
+  const mon = resultObj.avaliacaoMonitorId;
+  const aid = resultObj.avaliacao_id;
+  let pop = null;
+  if (mon && typeof mon === 'object' && mon.colaboradorNome != null) pop = mon;
+  else if (aid && typeof aid === 'object' && aid.colaboradorNome != null) pop = aid;
+
+  if (!pop) {
+    return { colaboradorEncontrado: null, avaliacaoData: null, resultObj };
+  }
+  try {
+    const monitorNorm = normalizarAvaliacaoDataLigacaoLegado(pop);
+    return {
+      colaboradorEncontrado: monitorNorm.colaboradorNome,
+      avaliacaoData: {
+        dataLigacao: monitorNorm.dataLigacao,
+        horaLigacao: monitorNorm.horaLigacao,
+        avaliacaoId: monitorNorm._id
+      },
+      resultObj: { ...resultObj, avaliacaoMonitorId: monitorNorm }
+    };
+  } catch (error) {
+    console.error('Erro ao processar avaliação:', error);
+    return { colaboradorEncontrado: null, avaliacaoData: null, resultObj };
+  }
+}
+
+function mesAnoFromCreatedAt(createdAt) {
+  if (!createdAt) return { mes: null, ano: null };
+  const mesesPtBr = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  const date = new Date(createdAt);
+  return { mes: mesesPtBr[date.getMonth()], ano: date.getFullYear() };
+}
 // populate(avaliacaoMonitorId → QualidadeAvaliacao) usa a conexão console_analises; o Proxy só registra o modelo no primeiro acesso — forçar antes do primeiro find + populate (cold start / ordem de rotas).
 void QualidadeAvaliacao.modelName;
 const { generateUploadSignedUrl, validateFileType, validateFileSize, configureBucketCORS, getBucketCORS, publishAudioToPubSub, fileExists } = require('../config/gcs');
@@ -519,15 +568,22 @@ router.get('/results-por-avaliacoes', async (req, res) => {
       }
     }
 
-    const docs = await AudioAnaliseResult.find({ avaliacaoMonitorId: { $in: inVals } })
+    const orConditions = [];
+    for (const id of unique) {
+      orConditions.push(...buildAvaliacaoIdOrFilter(id));
+    }
+
+    const docs = await AudioAnaliseResult.find(
+      orConditions.length > 0 ? { $or: orConditions } : { _id: null }
+    )
       .sort({ updatedAt: -1 })
       .select('-__v')
       .lean();
 
     const byKey = new Map();
     for (const doc of docs) {
-      if (!doc || doc.avaliacaoMonitorId == null) continue;
-      const k = String(doc.avaliacaoMonitorId);
+      if (!doc) continue;
+      const k = resolveAvaliacaoId(doc);
       if (!k || byKey.has(k)) continue;
       byKey.set(k, doc);
     }
@@ -540,7 +596,7 @@ router.get('/results-por-avaliacoes', async (req, res) => {
         data[k] = null;
         continue;
       }
-      const payload = { ...doc };
+      let payload = normalizeAudioAnaliseResultForClient(doc);
       if (payload.auditoria !== undefined) {
         payload.auditoria = normalizeAuditoriaForClient(payload.auditoria);
       }
@@ -574,22 +630,22 @@ router.get('/result/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const rawId = String(id || '').trim();
-    const monitorOr = [{ avaliacaoMonitorId: rawId }];
-    try {
-      if (rawId && mongoose.Types.ObjectId.isValid(rawId)) {
-        monitorOr.push({ avaliacaoMonitorId: new mongoose.Types.ObjectId(rawId) });
-      }
-    } catch (_) {
-      /* ignore cast errors */
+    const monitorOr = buildAvaliacaoIdOrFilter(rawId);
+    if (monitorOr.length === 0) {
+      return res.status(400).json({ success: false, error: 'ID da avaliação inválido' });
     }
 
-    // Buscar resultado da análise usando avaliacaoMonitorId
-    // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
     const result = await AudioAnaliseResult.findOne({ $or: monitorOr })
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
+        select: AVALIACAO_POPULATE_SELECT,
+        strictPopulate: false
+      })
+      .populate({
+        path: 'avaliacao_id',
+        model: 'QualidadeAvaliacao',
+        select: AVALIACAO_POPULATE_SELECT,
         strictPopulate: false
       });
 
@@ -616,7 +672,14 @@ router.get('/result/:id', async (req, res) => {
       });
     }
 
-    const payload = result.toObject ? result.toObject() : { ...result };
+    let payload = result.toObject ? result.toObject() : { ...result };
+    const ctx = extractAvaliacaoContext(payload);
+    payload = ctx.resultObj;
+    payload = normalizeAudioAnaliseResultForClient(payload, {
+      colaboradorNome: ctx.colaboradorEncontrado,
+      dataLigacao: ctx.avaliacaoData?.dataLigacao,
+      horaLigacao: ctx.avaliacaoData?.horaLigacao
+    });
     if (payload.auditoria !== undefined) {
       payload.auditoria = normalizeAuditoriaForClient(payload.auditoria);
     }
@@ -980,7 +1043,7 @@ router.get('/media-agente/:colaboradorNome', async (req, res) => {
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
+        select: 'colaboradorNome dataLigacao horaLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
         strictPopulate: false
       })
       .sort({ createdAt: -1 });
@@ -1099,38 +1162,30 @@ router.get('/listar', async (req, res) => {
       });
     }
 
-    // Buscar todas as análises com populate do avaliacaoMonitorId
-    // IMPORTANTE: Incluir todos os campos dos critérios para exibição na coluna Monitor
     const results = await AudioAnaliseResult.find({})
       .populate({
         path: 'avaliacaoMonitorId',
         model: 'QualidadeAvaliacao',
-        select: 'colaboradorNome dataLigacao saudacaoAdequada escutaAtiva clarezaObjetividade resolucaoQuestao registroAtendimento empatiaCordialidade direcionouPesquisa procedimentoIncorreto encerramentoBrusco conformidadeTicket naoConsultouBot',
+        select: AVALIACAO_POPULATE_SELECT,
+        strictPopulate: false
+      })
+      .populate({
+        path: 'avaliacao_id',
+        model: 'QualidadeAvaliacao',
+        select: AVALIACAO_POPULATE_SELECT,
         strictPopulate: false
       })
       .sort({ createdAt: -1 })
-      .limit(100); // Limitar a 100 resultados
+      .limit(100);
 
-    // Processar resultados e adicionar colaboradorNome diretamente do populate
     const analisesComColaborador = [];
     
     for (const result of results) {
-      const resultObj = result.toObject();
-      let colaboradorEncontrado = null;
-
-      // Obter colaboradorNome diretamente do populate de avaliacaoMonitorId
-      let avaliacaoData = null;
-      if (resultObj.avaliacaoMonitorId) {
-        try {
-          colaboradorEncontrado = resultObj.avaliacaoMonitorId.colaboradorNome;
-          avaliacaoData = {
-            dataLigacao: resultObj.avaliacaoMonitorId.dataLigacao,
-            avaliacaoId: resultObj.avaliacaoMonitorId._id
-          };
-        } catch (error) {
-          console.error('Erro ao processar avaliação:', error);
-        }
-      }
+      let resultObj = result.toObject();
+      const ctx = extractAvaliacaoContext(resultObj);
+      resultObj = ctx.resultObj;
+      const colaboradorEncontrado = ctx.colaboradorEncontrado;
+      const avaliacaoData = ctx.avaliacaoData;
 
       // Filtrar por colaboradorNome se fornecido
       if (colaboradorNome && colaboradorEncontrado !== colaboradorNome) {
@@ -1158,41 +1213,15 @@ router.get('/listar', async (req, res) => {
         }
       }
 
-      // Adicionar colaboradorNome ao resultado
-      resultObj.colaboradorNome = colaboradorEncontrado || null;
-      
-      // Mapear campos para o formato esperado pelo frontend
-      const analiseMapeada = {
-        ...resultObj,
-        // Mapear pontuacaoGPT
-        pontuacaoGPT: resultObj.pontuacaoConsensual !== null && resultObj.pontuacaoConsensual !== undefined 
-          ? resultObj.pontuacaoConsensual 
-          : (resultObj.gptAnalysis?.pontuacao || null),
-        // Mapear analiseGPT
-        analiseGPT: resultObj.gptAnalysis?.analysis || null,
-        // Mapear palavrasCriticas
-        palavrasCriticas: resultObj.gptAnalysis?.palavrasCriticas || resultObj.qualityAnalysis?.palavrasCriticas || [],
-        // Mapear confianca
-        confianca: resultObj.gptAnalysis?.confianca || null,
-        // Dados da avaliação
-        dataLigacao: avaliacaoData?.dataLigacao || null,
-        avaliacaoId: resultObj.avaliacaoMonitorId?._id || null,
-        // Campos de emoção e nuance
-        emotion: resultObj.emotion || null,
-        nuance: resultObj.nuance || null,
-        // Cálculo detalhado
-        calculoDetalhado: resultObj.qualityAnalysis?.calculoDetalhado || null,
-        // Extrair mes e ano de createdAt
-        mes: resultObj.createdAt ? (() => {
-          const mesesPtBr = [
-            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-          ];
-          const date = new Date(resultObj.createdAt);
-          return mesesPtBr[date.getMonth()];
-        })() : null,
-        ano: resultObj.createdAt ? new Date(resultObj.createdAt).getFullYear() : null
-      };
+      const { mes, ano: anoResult } = mesAnoFromCreatedAt(resultObj.createdAt);
+      let analiseMapeada = normalizeAudioAnaliseResultForClient(resultObj, {
+        colaboradorNome: colaboradorEncontrado,
+        dataLigacao: avaliacaoData?.dataLigacao,
+        horaLigacao: avaliacaoData?.horaLigacao
+      });
+      analiseMapeada.mes = mes;
+      analiseMapeada.ano = anoResult;
+      analiseMapeada.calculoDetalhado = resultObj.qualityAnalysis?.calculoDetalhado || null;
 
       let auditoriaLista = { auditoriaFeita: false, corpoAuditoria: '' };
       try {

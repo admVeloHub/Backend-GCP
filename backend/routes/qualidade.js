@@ -1,5 +1,8 @@
-// VERSION: v5.27.3 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// VERSION: v5.28.2 | DATE: 2026-06-05 | AUTHOR: VeloHub Development Team
 // CHANGELOG:
+// v5.28.2 - GET/POST/PUT avaliacoes: resposta com dataLigacao/horaLigacao absolutos (legado BSON Date via qualidadeDataLigacao util)
+// v5.28.1 - qualidade_avaliacoes: dataLigacao String YYYY-MM-DD absoluta (sem Date/UTC); horaLigacao HH:mm
+// v5.28.0 - qualidade_avaliacoes: horaLigacao (String HH:mm absoluto); dataLigacao normalizada para só data (UTC)
 // v5.27.3 - DELETE /funcoes/:id: checagem em uso via driver nativo ($or atuacao.funcao + legado string; evita ObjectParameterError)
 // v5.27.2 - DELETE/PUT /funcoes/:id: catch usa req.params.id (evita ReferenceError e timeout 30s no cliente)
 // v5.27.1 - DELETE /funcoes/:id: ensure conexão funcionarios, findOne+maxTimeMS (evita timeout 30s)
@@ -50,6 +53,19 @@ const { connectToDatabase } = require('../config/database');
 const { ensureFuncionariosConnectionReady, getFuncionariosConnection } = require('../config/funcionariosConnection');
 const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 const { normalizarAtuacaoParaObjetos } = require('../utils/normalizarAtuacaoFuncionario');
+const {
+  normalizeDataLigacaoAbsolute,
+  normalizeHoraLigacaoField,
+  normalizarAvaliacaoDataLigacaoLegado
+} = require('../utils/qualidadeDataLigacao');
+
+const toAvaliacaoResposta = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  return normalizarAvaliacaoDataLigacaoLegado(plain);
+};
+
+const toAvaliacoesListaResposta = (docs) => (docs || []).map(toAvaliacaoResposta);
 
 const formatFuncaoParaResposta = (doc) => {
   const o = doc && doc.toObject ? doc.toObject() : doc;
@@ -548,13 +564,27 @@ const validateAvaliacao = (req, res, next) => {
     });
   }
   
-  // Validar se dataLigacao é uma data válida
-  const dataLigacaoDate = new Date(dataLigacao);
-  if (isNaN(dataLigacaoDate.getTime())) {
+  const dataLigacaoNorm = normalizeDataLigacaoAbsolute(dataLigacao);
+  if (!dataLigacaoNorm) {
     return res.status(400).json({
       success: false,
-      message: 'Data da ligação deve ser uma data válida'
+      message: 'Data da ligação deve estar no formato YYYY-MM-DD'
     });
+  }
+
+  req.body.dataLigacao = dataLigacaoNorm;
+
+  if (req.body.horaLigacao !== undefined && req.body.horaLigacao !== null && req.body.horaLigacao !== '') {
+    const horaNorm = normalizeHoraLigacaoField(req.body.horaLigacao);
+    if (horaNorm === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hora da ligação deve estar no formato HH:mm (24h)'
+      });
+    }
+    req.body.horaLigacao = horaNorm;
+  } else if (Object.prototype.hasOwnProperty.call(req.body, 'horaLigacao')) {
+    req.body.horaLigacao = '';
   }
   
   // Validar tipo dos campos Boolean (se enviados, devem ser booleanos)
@@ -1294,7 +1324,7 @@ router.get('/avaliacoes', async (req, res) => {
     
     res.json({
       success: true,
-      data: avaliacoes,
+      data: toAvaliacoesListaResposta(avaliacoes),
       count: avaliacoes.length
     });
   } catch (error) {
@@ -1325,7 +1355,7 @@ router.get('/avaliacoes/:id', async (req, res) => {
     
     res.json({
       success: true,
-      data: avaliacao
+      data: toAvaliacaoResposta(avaliacao)
     });
   } catch (error) {
     console.error('[QUALIDADE-AVALIACOES] Erro ao buscar avaliação:', error);
@@ -1402,7 +1432,7 @@ router.post('/avaliacoes', validateAvaliacao, async (req, res) => {
     
     res.status(201).json({
       success: true,
-      data: avaliacaoSalva,
+      data: toAvaliacaoResposta(avaliacaoSalva),
       message: 'Avaliação criada com sucesso'
     });
   } catch (error) {
@@ -1486,7 +1516,7 @@ router.put('/avaliacoes/:id', validateAvaliacao, async (req, res) => {
     
     res.json({
       success: true,
-      data: avaliacaoAtualizada,
+      data: toAvaliacaoResposta(avaliacaoAtualizada),
       message: 'Avaliação atualizada com sucesso'
     });
   } catch (error) {
@@ -1698,7 +1728,7 @@ router.get('/avaliacoes/colaborador/:nome', async (req, res) => {
     
     res.json({
       success: true,
-      data: avaliacoes,
+      data: toAvaliacoesListaResposta(avaliacoes),
       message: `Avaliações encontradas para ${nome}`
     });
   } catch (error) {
@@ -1725,7 +1755,7 @@ router.get('/avaliacoes/mes/:mes/ano/:ano', async (req, res) => {
     
     res.json({
       success: true,
-      data: avaliacoes,
+      data: toAvaliacoesListaResposta(avaliacoes),
       message: `Avaliações encontradas para ${mes}/${ano}`
     });
   } catch (error) {

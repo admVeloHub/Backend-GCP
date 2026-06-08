@@ -1,7 +1,28 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
-<!-- VERSION: v1.1.0 | DATE: 2026-06-02 -->
+<!-- VERSION: v1.2.0 | DATE: 2026-06-05 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — Qualidade: leitura dual audio_analise_results + data/hora ligação absoluta — 2026-06-05
+
+**Data/Hora:** 2026-06-05  
+**Tipo:** Push GitHub  
+**Versão:** `audioAnalise.js` v3.2.0, `AudioAnaliseResult.js` v2.4.0, `qualidade.js` v5.28.x, `QualidadeAvaliacao.js` v2.7.x  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+**Commit:** *(consultar `git log -1` após o push)*  
+
+### Descrição:
+Backend alinhado ao schema LISTA do worker para `audio_analise_results`: leitura dual (`avaliacao_id` + legado `avaliacaoMonitorId`), campos `transcricao`, `analiseDialogo`, `criteriosDetalhados`, `pontuacaoCalculada`, `observacaoGPT`. Normalizador compartilhado nas rotas GET `/listar`, `/result/:id` e `/results-por-avaliacoes`. `qualidade_avaliacoes`: `dataLigacao` string YYYY-MM-DD e `horaLigacao` HH:mm absolutos.
+
+### Arquivos modificados (principais):
+- `backend/routes/audioAnalise.js` v3.2.0, `backend/models/AudioAnaliseResult.js` v2.4.0
+- `backend/utils/qualidadeAudioAnaliseNormalize.js` v1.0.0 (novo)
+- `backend/utils/qualidadeDataLigacao.js` v1.0.0 (novo)
+- `backend/routes/qualidade.js`, `backend/models/QualidadeAvaliacao.js`
+- `DEPLOY_LOG.md` v1.2.0
+
+---
 
 ## Push GitHub — Qualidade atuacao por extenso + rotas Corporativo — 2026-06-02
 

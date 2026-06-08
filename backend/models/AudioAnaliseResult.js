@@ -1,4 +1,5 @@
-// VERSION: v2.3.2 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// VERSION: v2.4.0 | DATE: 2026-06-05 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.4.0 - Campos LISTA (transcricao, analiseDialogo, criteriosDetalhados, pontuacaoCalculada, observacaoGPT, avaliacao_id); legado mantido; refs opcionais para dual read
 // CHANGELOG: v2.3.2 - Release push GitHub 2026-04-10
 // CHANGELOG: v2.3.1 - Após registrar na conexão analises, garantir QualidadeAvaliacao registrado para populate de avaliacaoMonitorId
 // CHANGELOG: v2.3.0 - Campo auditoria como Mixed: objeto { auditoriaFeita, corpoAuditoria }; legado String ainda lido nas rotas
@@ -43,26 +44,82 @@ const nuanceSchema = new mongoose.Schema({
   tensao: Number
 }, { _id: false });
 
+const transcricaoTurnoSchema = new mongoose.Schema({
+  role: String,
+  fala: String
+}, { _id: false });
+
+const categoriaAnaliseSchema = new mongoose.Schema({
+  nota: Number,
+  classificacao: String,
+  avaliacao: String
+}, { _id: false });
+
+const consideracoesSchema = new mongoose.Schema({
+  classificacao: String,
+  avaliacao: String
+}, { _id: false });
+
+const analiseDialogoSchema = new mongoose.Schema({
+  temperatura: categoriaAnaliseSchema,
+  tensao: categoriaAnaliseSchema,
+  comportamentoVocal: categoriaAnaliseSchema,
+  consideracoes: consideracoesSchema
+}, { _id: false });
+
+const criteriosDetalhadosSchema = new mongoose.Schema({
+  saudacaoAdequada: { type: Boolean, default: false },
+  escutaAtiva: { type: Boolean, default: false },
+  clarezaObjetividade: { type: Boolean, default: false },
+  resolucaoQuestao: { type: Boolean, default: false },
+  dominioAssunto: { type: Boolean, default: false },
+  empatiaCordialidade: { type: Boolean, default: false },
+  direcionouPesquisa: { type: Boolean, default: false },
+  procedimentoIncorreto: { type: Boolean, default: false },
+  encerramentoBrusco: { type: Boolean, default: false },
+  registroAtendimento: { type: Boolean, default: false },
+  naoConsultouBot: { type: Boolean, default: false },
+  conformidadeTicket: { type: Boolean, default: false }
+}, { _id: false });
+
 // Schema principal para resultados da análise de áudio
 const audioAnaliseResultSchema = new mongoose.Schema({
+  avaliacao_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'QualidadeAvaliacao'
+  },
   avaliacaoMonitorId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
     ref: 'QualidadeAvaliacao'
+  },
+  nomeArquivoAudio: {
+    type: String,
+    trim: true
   },
   nomeArquivo: {
     type: String,
-    required: true,
     trim: true
   },
   gcsUri: {
-    type: String,
-    required: true
+    type: String
   },
   transcription: {
-    type: String,
-    required: true
+    type: String
   },
+  transcricao: [transcricaoTurnoSchema],
+  analiseDialogo: analiseDialogoSchema,
+  criteriosDetalhados: criteriosDetalhadosSchema,
+  pontuacaoCalculada: {
+    type: Number,
+    min: -160,
+    max: 100
+  },
+  observacaoGPT: {
+    type: String,
+    default: ''
+  },
+  timestampInicio: Date,
+  timestampFim: Date,
   timestamps: [timestampSchema],
   emotion: emotionSchema,
   nuance: nuanceSchema,
@@ -128,8 +185,10 @@ const audioAnaliseResultSchema = new mongoose.Schema({
 });
 
 // Índices
+audioAnaliseResultSchema.index({ avaliacao_id: 1 });
 audioAnaliseResultSchema.index({ avaliacaoMonitorId: 1 });
 audioAnaliseResultSchema.index({ nomeArquivo: 1 });
+audioAnaliseResultSchema.index({ nomeArquivoAudio: 1 });
 audioAnaliseResultSchema.index({ createdAt: -1 });
 
 // Modelo - criado com lazy loading

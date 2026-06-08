@@ -1,4 +1,6 @@
-// VERSION: v2.6.1 | DATE: 2026-04-10 | AUTHOR: VeloHub Development Team
+// VERSION: v2.7.1 | DATE: 2026-06-05 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v2.7.1 - dataLigacao String YYYY-MM-DD absoluta (sem Date/fuso); horaLigacao String HH:mm
+// CHANGELOG: v2.7.0 - horaLigacao (String HH:mm): hora absoluta informada pelo monitor; dataLigacao permanece só data
 // CHANGELOG: v2.6.1 - Release push GitHub 2026-04-10
 // CHANGELOG: v2.6.0 - avaliacaoIA (Number opcional): nota IA espelhada ao concluir audio_analise_results; atualizado pelo worker
 // CHANGELOG: v2.5.0 - Campo somenteAnaliseAudioIA (Boolean default false): lote só áudio até avaliação manual do supervisor
@@ -86,8 +88,16 @@ const qualidadeAvaliacaoSchema = new mongoose.Schema({
     trim: true
   },
   dataLigacao: {
-    type: Date,
-    required: true
+    type: String,
+    required: true,
+    trim: true,
+    match: [/^\d{4}-\d{2}-\d{2}$/, 'dataLigacao deve ser YYYY-MM-DD']
+  },
+  /** Hora absoluta da ligação (HH:mm, 24h), informada pelo monitor — sem conversão de fuso */
+  horaLigacao: {
+    type: String,
+    default: '',
+    trim: true
   },
   pontuacaoTotal: {
     type: Number,
