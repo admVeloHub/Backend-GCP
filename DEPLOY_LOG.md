@@ -1,7 +1,24 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
-<!-- VERSION: v1.2.2 | DATE: 2026-06-08 -->
+<!-- VERSION: v1.2.3 | DATE: 2026-07-22 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — QualidadeFuncionario: aliasColaborador + ordem LISTA_SCHEMAS — 2026-07-22
+
+**Data/Hora:** 2026-07-22  
+**Tipo:** Push GitHub  
+**Versão:** `QualidadeFuncionario.js` v1.21.0  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+
+### Descrição:
+Modelo Mongoose `funcionarios_cadastroColaboradores` alinhado ao LISTA_SCHEMAS: novo campo opcional `aliasColaborador` (nome exibido em atendimentos/chat/tickets) e reorganização da ordem dos campos. Retrocompatibilidade mantida nas chaves legadas de `acessos`.
+
+### Arquivos:
+- `backend/models/QualidadeFuncionario.js` v1.21.0
+- `DEPLOY_LOG.md` v1.2.3
+
+---
 
 ## Push GitHub — Hotfix: GET avaliacoes 500 + dataLigacao legado na coluna Atendimento — 2026-06-08
 

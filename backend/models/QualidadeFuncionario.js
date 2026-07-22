@@ -1,4 +1,5 @@
-// VERSION: v1.20.1 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// VERSION: v1.21.0 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.21.0 - Campo aliasColaborador; ordem dos campos alinhada a LISTA_SCHEMAS funcionarios_cadastroColaboradores
 // CHANGELOG: v1.20.1 - Índice atuacao.funcao (consulta DELETE /funcoes e listagens)
 // CHANGELOG: v1.20.0 - atuacao [{ funcao: String }] nomes por extenso; aceita legado ObjectId/string na validação
 // CHANGELOG: v1.17.0 - Campo departamento (String, acima de atuacao; alinhado a LISTA_SCHEMAS qualidade_funcionarios)
@@ -45,47 +46,16 @@ const atuacaoItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Schema principal para qualidade_funcionarios
+// Schema principal — console_funcionarios.funcionarios_cadastroColaboradores (LISTA_SCHEMAS)
 const qualidadeFuncionarioSchema = new mongoose.Schema({
   colaboradorNome: {
     type: String,
     required: true,
     trim: true
   },
-  dataAniversario: {
-    type: Date,
-    default: null
-  },
-  CPF: {
+  aliasColaborador: {
     type: String,
     default: null,
-    trim: true,
-    validate: {
-      validator: function(v) {
-        if (!v) return true; // Opcional
-        // CPF deve ter 11 dígitos, sem pontos ou traços
-        return /^\d{11}$/.test(v);
-      },
-      message: 'CPF deve conter exatamente 11 dígitos numéricos'
-    }
-  },
-  profile_pic: {
-    type: String,
-    default: null,
-    trim: true
-  },
-  empresa: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  dataContratado: {
-    type: Date,
-    required: true
-  },
-  telefone: {
-    type: String,
-    default: '',
     trim: true
   },
   userMail: {
@@ -96,20 +66,27 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
     validate: {
       validator: function(v) {
         if (!v) return true; // Opcional
-        // Validação básica de email
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
       },
       message: 'Email inválido'
     }
   },
-  password: {
-    type: String,
-    default: null
-  },
-  departamento: {
+  telefone: {
     type: String,
     default: '',
     trim: true
+  },
+  CPF: {
+    type: String,
+    default: null,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Opcional
+        return /^\d{11}$/.test(v);
+      },
+      message: 'CPF deve conter exatamente 11 dígitos numéricos'
+    }
   },
   atuacao: {
     type: [atuacaoItemSchema],
@@ -130,49 +107,32 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
       message: 'Atuação deve ser array de objetos { funcao: "nome por extenso" }',
     },
   },
-  escala: {
-    type: String,
-    default: '',
-    trim: true
-  },
-  // Campo acessos suporta ambos os formatos durante transição
-  // Formato antigo: Array de objetos [{sistema, perfil, observacoes, updatedAt}]
-  // Formato novo: objeto booleano só plataformas; legado no DB pode ter chaves de módulo até migração
+  // Formato antigo: Array [{sistema, perfil, ...}]; formato novo: objeto booleano de plataformas
   acessos: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
     validate: {
       validator: function(v) {
         if (!v) return true; // Opcional
-        
-        // Formato novo: objeto com chaves de credenciais (booleanos)
+
         if (typeof v === 'object' && !Array.isArray(v)) {
           const keys = Object.keys(v);
           const validKeys = ['Velohub', 'Console', 'Academy', 'Desk', 'realTime', 'Ouvidoria', 'Sociais', 'apoioN1', 'ChavePix'];
           return keys.every(key => validKeys.includes(key) && typeof v[key] === 'boolean');
         }
-        
-        // Formato antigo: array de objetos
+
         if (Array.isArray(v)) {
-          return v.every(item => 
-            typeof item === 'object' && 
-            item.sistema && 
+          return v.every(item =>
+            typeof item === 'object' &&
+            item.sistema &&
             item.perfil
           );
         }
-        
+
         return false;
       },
       message: 'Acessos deve ser um objeto de plataformas (booleanos) ou array legado [{sistema, perfil, ...}]'
     }
-  },
-  desligado: {
-    type: Boolean,
-    default: false
-  },
-  dataDesligamento: {
-    type: Date,
-    default: null
   },
   afastado: {
     type: Boolean,
@@ -181,6 +141,46 @@ const qualidadeFuncionarioSchema = new mongoose.Schema({
   dataAfastamento: {
     type: Date,
     default: null
+  },
+  dataAniversario: {
+    type: Date,
+    default: null
+  },
+  dataContratado: {
+    type: Date,
+    required: true
+  },
+  dataDesligamento: {
+    type: Date,
+    default: null
+  },
+  departamento: {
+    type: String,
+    default: '',
+    trim: true
+  },
+  desligado: {
+    type: Boolean,
+    default: false
+  },
+  empresa: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  escala: {
+    type: String,
+    default: '',
+    trim: true
+  },
+  password: {
+    type: String,
+    default: null
+  },
+  profile_pic: {
+    type: String,
+    default: null,
+    trim: true
   },
   createdAt: {
     type: Date,
