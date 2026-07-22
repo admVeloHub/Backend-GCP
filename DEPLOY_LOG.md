@@ -1,7 +1,24 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
-<!-- VERSION: v1.2.3 | DATE: 2026-07-22 -->
+<!-- VERSION: v1.2.4 | DATE: 2026-07-22 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — Qualidade: normalização aliasColaborador no POST/PUT funcionarios — 2026-07-22
+
+**Data/Hora:** 2026-07-22  
+**Tipo:** Push GitHub  
+**Versão:** `qualidade.js` v5.28.5  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+
+### Descrição:
+Rotas POST/PUT `/api/qualidade/funcionarios` passam a normalizar `aliasColaborador` (trim; vazio → null), complementando o modelo QualidadeFuncionario v1.21.0. Campo reconhecido pela API sem campo no modal do front.
+
+### Arquivos:
+- `backend/routes/qualidade.js` v5.28.5
+- `DEPLOY_LOG.md` v1.2.4
+
+---
 
 ## Push GitHub — QualidadeFuncionario: aliasColaborador + ordem LISTA_SCHEMAS — 2026-07-22
 

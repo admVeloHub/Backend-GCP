@@ -1,4 +1,5 @@
-// VERSION: v5.28.4 | DATE: 2026-06-08 | AUTHOR: VeloHub Development Team
+// VERSION: v5.28.5 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v5.28.5 - POST/PUT funcionarios: normalização trim de aliasColaborador (campo reconhecido; sem UI no modal)
 // CHANGELOG: v5.28.4 - qualidadeDataLigacao v1.1.0: normalização legado BSON Date→YYYY-MM-DD; ticket-avaliacoes normaliza dataChamado na resposta
 // CHANGELOG: v5.28.3 - GET avaliacoes/ticket-avaliacoes: leitura via collection nativa (evita CastError em docs legados); dataLigacao Mixed no model
 // CHANGELOG: v5.28.2 - GET/POST/PUT avaliacoes: resposta com dataLigacao/horaLigacao absolutos (legado BSON Date via qualidadeDataLigacao util)
@@ -963,6 +964,14 @@ router.post('/funcionarios', validateFuncionario, async (req, res) => {
     }
     
     // Processar novos campos opcionais
+    if (funcionarioData.aliasColaborador !== undefined) {
+      if (funcionarioData.aliasColaborador === null || funcionarioData.aliasColaborador === '') {
+        funcionarioData.aliasColaborador = null;
+      } else {
+        funcionarioData.aliasColaborador = String(funcionarioData.aliasColaborador).trim();
+      }
+    }
+
     // CPF: já validado, apenas garantir trim
     if (funcionarioData.CPF) {
       funcionarioData.CPF = funcionarioData.CPF.trim();
@@ -1225,6 +1234,14 @@ router.put('/funcionarios/:id', validateFuncionario, async (req, res) => {
     }
     
     // Processar novos campos opcionais
+    if (updateData.aliasColaborador !== undefined) {
+      if (updateData.aliasColaborador === null || updateData.aliasColaborador === '') {
+        updateData.aliasColaborador = null;
+      } else {
+        updateData.aliasColaborador = String(updateData.aliasColaborador).trim();
+      }
+    }
+
     // CPF: já validado, apenas garantir trim
     if (updateData.CPF !== undefined) {
       if (updateData.CPF === null || updateData.CPF === '') {
