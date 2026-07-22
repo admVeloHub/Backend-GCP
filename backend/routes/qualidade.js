@@ -1,4 +1,5 @@
-// VERSION: v5.28.5 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// VERSION: v5.28.6 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v5.28.6 - GET funcionarios/funcoes: ensure conexão + leitura nativa console_funcionarios (fix 500 Cloud Run)
 // CHANGELOG: v5.28.5 - POST/PUT funcionarios: normalização trim de aliasColaborador (campo reconhecido; sem UI no modal)
 // CHANGELOG: v5.28.4 - qualidadeDataLigacao v1.1.0: normalização legado BSON Date→YYYY-MM-DD; ticket-avaliacoes normaliza dataChamado na resposta
 // CHANGELOG: v5.28.3 - GET avaliacoes/ticket-avaliacoes: leitura via collection nativa (evita CastError em docs legados); dataLigacao Mixed no model
@@ -51,7 +52,7 @@ const {
   normalizarModulosVelohub,
   normalizarAcessosPlataforma,
 } = require('../utils/modulosVelohub');
-const { connectToDatabase } = require('../config/database');
+const { connectToDatabase, getFuncionariosDatabase } = require('../config/database');
 const { ensureFuncionariosConnectionReady, getFuncionariosConnection } = require('../config/funcionariosConnection');
 const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
 const { normalizarAtuacaoParaObjetos } = require('../utils/normalizarAtuacaoFuncionario');
@@ -104,6 +105,48 @@ const formatFuncaoParaResposta = (doc) => {
     ...o,
     modulosVelohub: normalizarModulosVelohub(o.modulosVelohub),
   };
+};
+
+const ROTA_PRECISA_FUNCIONARIOS_DB = /^\/funcionarios(\/|$)|^\/funcoes(\/|$)/;
+
+const getCadastroColaboradoresCollection = () =>
+  getFuncionariosDatabase().collection(FUNCIONARIOS_COLLECTIONS.CADASTRO);
+
+const getGerenciamentoAtuacoesCollection = () =>
+  getFuncionariosDatabase().collection(FUNCIONARIOS_COLLECTIONS.ATUACOES);
+
+const normalizarFuncionarioDocResposta = async (funcionarioObj) => {
+  try {
+    return {
+      ...funcionarioObj,
+      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
+      atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
+    };
+  } catch (normErr) {
+    console.warn('[QUALIDADE-FUNCIONARIOS] Normalização parcial:', funcionarioObj?._id, normErr.message);
+    return {
+      ...funcionarioObj,
+      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
+      atuacao: Array.isArray(funcionarioObj.atuacao) ? funcionarioObj.atuacao : [],
+    };
+  }
+};
+
+const ensureFuncionariosRouteReady = async (req, res, next) => {
+  try {
+    await Promise.all([
+      ensureFuncionariosConnectionReady(),
+      connectToDatabase(),
+    ]);
+    next();
+  } catch (error) {
+    console.error('[QUALIDADE] console_funcionarios indisponível:', error.message);
+    console.error('[QUALIDADE] Stack:', error.stack);
+    return res.status(503).json({
+      success: false,
+      message: 'Serviço de funcionários temporariamente indisponível',
+    });
+  }
 };
 
 const parseQaResgateXpPrice = (raw) => {
@@ -432,6 +475,12 @@ const logResponse = (req, res, next) => {
 
 router.use(logRequest);
 router.use(logResponse);
+router.use((req, res, next) => {
+  if (ROTA_PRECISA_FUNCIONARIOS_DB.test(req.path)) {
+    return ensureFuncionariosRouteReady(req, res, next);
+  }
+  next();
+});
 
 // Validação de dados obrigatórios para funcionários
 const validateFuncionario = (req, res, next) => {
@@ -819,20 +868,14 @@ const normalizarAcessosParaResposta = (acessos) => {
 router.get('/funcionarios', async (req, res) => {
   try {
     console.log(`[QUALIDADE-FUNCIONARIOS] ${new Date().toISOString()} - GET /funcionarios - PROCESSING`);
-    
-    const funcionarios = await QualidadeFuncionario.find({})
-      .sort({ createdAt: -1 });
 
-    await connectToDatabase();
+    const funcionarios = await getCadastroColaboradoresCollection()
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
     const funcionariosNormalizados = await Promise.all(
-      funcionarios.map(async (func) => {
-        const funcionarioObj = func.toObject ? func.toObject() : func;
-        return {
-          ...funcionarioObj,
-          acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
-          atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
-        };
-      })
+      funcionarios.map((func) => normalizarFuncionarioDocResposta(func))
     );
     
     res.json({
@@ -855,22 +898,17 @@ router.get('/funcionarios', async (req, res) => {
 router.get('/funcionarios/ativos', async (req, res) => {
   try {
     console.log(`[QUALIDADE-FUNCIONARIOS] ${new Date().toISOString()} - GET /funcionarios/ativos - PROCESSING`);
-    
-    const funcionariosAtivos = await QualidadeFuncionario.find({
-      desligado: false,
-      afastado: false
-    }).sort({ createdAt: -1 });
-    
-    await connectToDatabase();
-    const funcionariosNormalizados = await Promise.all(
-      funcionariosAtivos.map(async (func) => {
-        const funcionarioObj = func.toObject ? func.toObject() : func;
-        return {
-          ...funcionarioObj,
-          acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
-          atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
-        };
+
+    const funcionariosAtivos = await getCadastroColaboradoresCollection()
+      .find({
+        desligado: { $ne: true },
+        afastado: { $ne: true },
       })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const funcionariosNormalizados = await Promise.all(
+      funcionariosAtivos.map((func) => normalizarFuncionarioDocResposta(func))
     );
     
     res.json({
@@ -892,23 +930,26 @@ router.get('/funcionarios/:id', async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`[QUALIDADE-FUNCIONARIOS] ${new Date().toISOString()} - GET /funcionarios/${id} - PROCESSING`);
-    
-    const funcionario = await QualidadeFuncionario.findById(id);
-    
-    if (!funcionario) {
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de funcionário inválido',
+      });
+    }
+
+    const funcionarioObj = await getCadastroColaboradoresCollection().findOne({
+      _id: new mongoose.Types.ObjectId(id),
+    });
+
+    if (!funcionarioObj) {
       return res.status(404).json({
         success: false,
         message: 'Funcionário não encontrado'
       });
     }
-    
-    await connectToDatabase();
-    const funcionarioObj = funcionario.toObject ? funcionario.toObject() : funcionario;
-    const funcionarioNormalizado = {
-      ...funcionarioObj,
-      acessos: normalizarAcessosParaResposta(funcionarioObj.acessos),
-      atuacao: await normalizarAtuacaoParaObjetos(funcionarioObj.atuacao),
-    };
+
+    const funcionarioNormalizado = await normalizarFuncionarioDocResposta(funcionarioObj);
     
     res.json({
       success: true,
@@ -2428,8 +2469,10 @@ router.get('/funcoes', async (req, res) => {
     console.log('🔍 [COMPLIANCE] GET /api/qualidade/funcoes - Iniciando listagem');
     
     global.emitTraffic('Qualidade Funções', 'processing', 'Consultando DB');
-    // Buscar todas as funções ordenadas por createdAt DESC
-    const funcoes = await QualidadeFuncoes.find({}).sort({ createdAt: -1 });
+    const funcoes = await getGerenciamentoAtuacoesCollection()
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
     
     const funcoesFormatadas = funcoes.map((f) => formatFuncaoParaResposta(f));
     const response = {

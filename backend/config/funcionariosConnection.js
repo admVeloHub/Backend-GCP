@@ -1,4 +1,5 @@
-// VERSION: v1.1.0 | DATE: 2026-05-29 | AUTHOR: VeloHub Development Team
+// VERSION: v1.2.0 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.2.0 - useDb no pool Mongoose principal (evita createConnection extra que falhava no Cloud Run)
 // CHANGELOG: v1.1.0 - ensureFuncionariosConnectionReady() para evitar timeout em rotas Qualidade
 // CHANGELOG: v1.0.1 - asPromise().catch evita unhandledRejection quando SRV/DNS falha
 const mongoose = require('mongoose');
@@ -9,38 +10,24 @@ let funcionariosConnection = null;
 
 const getFuncionariosConnection = () => {
   if (!funcionariosConnection) {
-    const MONGODB_URI = getMongoUri();
-    if (!MONGODB_URI) {
-      throw new Error('MONGO_ENV não configurada');
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Mongoose principal não conectado. Aguarde ensureFuncionariosConnectionReady().');
     }
-
-    funcionariosConnection = mongoose.createConnection(MONGODB_URI, {
-      dbName: FUNCIONARIOS_DB_NAME,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-
-    funcionariosConnection.on('connected', () => {
-      console.log(`✅ Conexão MongoDB (${FUNCIONARIOS_DB_NAME}) estabelecida`);
-    });
-
-    funcionariosConnection.on('error', (error) => {
-      console.error(`❌ Erro na conexão MongoDB (${FUNCIONARIOS_DB_NAME}):`, error);
-    });
-
-    void funcionariosConnection.asPromise().catch((err) => {
-      console.error(`❌ Falha assíncrona MongoDB (${FUNCIONARIOS_DB_NAME}):`, err.message);
-    });
+    funcionariosConnection = mongoose.connection.useDb(FUNCIONARIOS_DB_NAME, { useCache: true });
+    console.log(`✅ Mongoose useDb (${FUNCIONARIOS_DB_NAME}) pronto no pool compartilhado`);
   }
   return funcionariosConnection;
 };
 
-/** Aguarda conexão pronta antes de operações Mongoose (evita buffer/timeout de 30s+). */
+/** Aguarda Mongoose principal + useDb(console_funcionarios) antes de operações. */
 const ensureFuncionariosConnectionReady = async () => {
-  const conn = getFuncionariosConnection();
-  if (conn.readyState === 1) return conn;
-  await conn.asPromise();
-  return conn;
+  const MONGODB_URI = getMongoUri();
+  if (mongoose.connection.readyState !== 1) {
+    await mongoose.connect(MONGODB_URI, {
+      dbName: process.env.MONGODB_DB_NAME || 'console_conteudo',
+    });
+  }
+  return getFuncionariosConnection();
 };
 
 module.exports = {

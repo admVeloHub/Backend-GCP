@@ -1,7 +1,26 @@
 # DEPLOY LOG - Console de Conteúdo VeloHub
-<!-- VERSION: v1.2.4 | DATE: 2026-07-22 -->
+<!-- VERSION: v1.2.5 | DATE: 2026-07-22 -->
 
 > **Repositório único:** `admVeloHub/Backend-GCP` (`origin`). O remoto GitHub `back-skynet` foi descontinuado e removido do clone; não usar. Entradas antigas que citavam `back-skynet` foram ajustadas para referir apenas Backend-GCP.
+
+## Push GitHub — Hotfix: GET funcionarios/funcoes 500 no Cloud Run — 2026-07-22
+
+**Data/Hora:** 2026-07-22  
+**Tipo:** Push GitHub  
+**Versão:** `qualidade.js` v5.28.6, `funcionariosConnection.js` v1.2.0, `normalizarAtuacaoFuncionario.js` v1.1.1  
+**Repositório:** admVeloHub/Backend-GCP (origin)  
+**Branch:** main  
+
+### Descrição:
+Correção de 500/timeout em GET `/api/qualidade/funcionarios` e `/funcoes`: conexão `console_funcionarios` via `useDb` no pool Mongoose principal (em vez de `createConnection` extra); middleware de readiness; leitura nativa nas listagens; atuação legada não derruba a listagem.
+
+### Arquivos:
+- `backend/config/funcionariosConnection.js` v1.2.0
+- `backend/routes/qualidade.js` v5.28.6
+- `backend/utils/normalizarAtuacaoFuncionario.js` v1.1.1
+- `DEPLOY_LOG.md` v1.2.5
+
+---
 
 ## Push GitHub — Qualidade: normalização aliasColaborador no POST/PUT funcionarios — 2026-07-22
 

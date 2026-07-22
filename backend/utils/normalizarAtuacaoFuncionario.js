@@ -1,4 +1,5 @@
-// VERSION: v1.1.0 | DATE: 2026-05-28 | AUTHOR: VeloHub Development Team
+// VERSION: v1.1.1 | DATE: 2026-07-22 | AUTHOR: VeloHub Development Team
+// CHANGELOG: v1.1.1 - Falha ao resolver atuacao legada não derruba GET /funcionarios (retorna parcial em vez de throw)
 const mongoose = require('mongoose');
 const { getFuncionariosDatabase } = require('../config/database');
 const { FUNCIONARIOS_COLLECTIONS } = require('../config/funcionariosCollections');
@@ -77,7 +78,18 @@ async function normalizarAtuacaoParaObjetos(atuacaoRaw) {
   }
 
   if (nomesResolvidos.length === 0 && items.length > 0) {
-    throw new Error('Não foi possível resolver atuacao para nomes por extenso');
+    console.warn('[normalizarAtuacao] Não foi possível resolver atuacao para nomes por extenso; retornando parcial');
+    const parcial = [];
+    const seenParcial = new Set();
+    items.forEach((item) => {
+      const nome = extrairNomeAtuacao(item);
+      if (!nome) return;
+      const key = nome.toLowerCase();
+      if (seenParcial.has(key)) return;
+      seenParcial.add(key);
+      parcial.push({ funcao: nome });
+    });
+    return parcial;
   }
 
   const seen = new Set();
